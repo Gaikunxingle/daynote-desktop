@@ -1,0 +1,41 @@
+# Build and release outputs
+/build/
+/release/
+/dist/
+**/bin/
+**/obj/
+*.exe
+*.dll
+*.pdb
+*.zip
+*.7z
+
+# Local IDE / OS files
+.vs/
+.idea/
+*.user
+*.suo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Personal application data and local verification artifacts
+/Data/
+/data/
+reminders.json
+reminders.json.*
+desktop-status.txt
+capture-error.txt
+*.log
+/qa/
+/qa-*/
+/test-results/
+/test-profile*/
+*-result.txt
+/captures/
+/screenshots-local/
+
+# Local credentials or configuration
+.env
+.env.*
+!.env.example

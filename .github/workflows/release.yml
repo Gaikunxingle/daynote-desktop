@@ -1,0 +1,125 @@
+name: Publish Windows release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: daynote-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'Release '))
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Build desktop application
+        run: .\build.ps1
+
+      - name: Run isolated tests
+        run: .\test.ps1
+
+      - name: Package application
+        id: package
+        run: |
+          $package = .\scripts\package.ps1
+          "tag=$($package.Tag)" >> $env:GITHUB_OUTPUT
+          "archive=$($package.ArchivePath)" >> $env:GITHUB_OUTPUT
+          "checksums=$($package.ChecksumPath)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload assets to a draft and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.package.outputs.tag }}
+          RELEASE_ARCHIVE: ${{ steps.package.outputs.archive }}
+          RELEASE_CHECKSUMS: ${{ steps.package.outputs.checksums }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2026-03-10'
+          }
+          $api = "$env:GITHUB_API_URL/repos/$env:GITHUB_REPOSITORY"
+          $tag = $env:RELEASE_TAG
+
+          # Authenticated listing includes drafts. Never alter an existing release.
+          for ($page = 1; ; $page++) {
+            $releaseResponse = Invoke-RestMethod -Uri "$api/releases?per_page=100&page=$page" -Headers $headers
+            $releases = @($releaseResponse)
+            $existing = @($releases | Where-Object { $_.tag_name -eq $tag })
+            if ($existing.Count -gt 0) {
+              Write-Host "Release $tag already exists; leaving it unchanged (draft=$($existing[0].draft))."
+              exit 0
+            }
+            if ($releases.Count -lt 100) { break }
+          }
+
+          # A pre-existing tag must refer to the exact source being packaged.
+          $tagRef = $null
+          try {
+            $encodedTag = [Uri]::EscapeDataString($tag)
+            $tagRef = Invoke-RestMethod -Uri "$api/git/ref/tags/$encodedTag" -Headers $headers
+          }
+          catch {
+            if ([int]$_.Exception.Response.StatusCode -ne 404) { throw }
+          }
+          if ($null -ne $tagRef) {
+            $target = $tagRef.object
+            while ($target.type -eq 'tag') {
+              $target = (Invoke-RestMethod -Uri "$api/git/tags/$($target.sha)" -Headers $headers).object
+            }
+            if ($target.type -ne 'commit' -or $target.sha -ne $env:GITHUB_SHA) {
+              throw "Tag $tag already points to another commit; no release was created."
+            }
+          }
+
+          $body = @{
+            tag_name = $tag
+            target_commitish = $env:GITHUB_SHA
+            name = "Daynote $tag"
+            body = "朝夕提醒 Windows 64 位版本。请下载 ZIP 并完整解压，双击 build/Daynote.exe 即可使用；需要桌面快捷方式和开机启动时，可按 README.md 运行 install.ps1。SHA256SUMS.txt 用于核验下载文件。发行包不含个人日程，首次启动为空白日历；文档截图使用虚构示例。"
+            draft = $true
+            prerelease = $false
+          } | ConvertTo-Json
+          $release = Invoke-RestMethod -Method Post -Uri "$api/releases" -Headers $headers -ContentType 'application/json' -Body $body
+          if (-not $release.draft) { throw 'GitHub did not create the requested draft release.' }
+          $uploadBase = $release.upload_url.Split('{')[0]
+          $files = @($env:RELEASE_ARCHIVE, $env:RELEASE_CHECKSUMS)
+          $expected = @()
+          foreach ($path in $files) {
+            $file = Get-Item -LiteralPath $path
+            $digest = 'sha256:' + (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            $contentType = if ($file.Extension -eq '.zip') { 'application/zip' } else { 'text/plain' }
+            $uploadUrl = $uploadBase + '?name=' + [Uri]::EscapeDataString($file.Name)
+            $asset = Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $headers -ContentType $contentType -InFile $file.FullName
+            if ($asset.state -ne 'uploaded' -or $asset.size -ne $file.Length -or $asset.digest -ne $digest) {
+              throw "Upload verification failed for $($file.Name). The release remains a draft."
+            }
+            $expected += @{ Name = $file.Name; Size = $file.Length; Digest = $digest }
+          }
+
+          $assetResponse = Invoke-RestMethod -Uri "$api/releases/$($release.id)/assets" -Headers $headers
+          $assets = @($assetResponse)
+          foreach ($file in $expected) {
+            $matches = @($assets | Where-Object { $_.name -eq $file.Name -and $_.state -eq 'uploaded' -and $_.size -eq $file.Size -and $_.digest -eq $file.Digest })
+            if ($matches.Count -ne 1) { throw "Draft asset verification failed for $($file.Name); not publishing." }
+          }
+          if ($assets.Count -ne $expected.Count) { throw 'Unexpected draft assets; not publishing.' }
+          $published = Invoke-RestMethod -Method Patch -Uri "$api/releases/$($release.id)" -Headers $headers -ContentType 'application/json' -Body '{"draft":false}'
+          if ($published.draft) { throw 'GitHub did not publish the verified draft.' }
+          Write-Host "Published $($published.html_url)"

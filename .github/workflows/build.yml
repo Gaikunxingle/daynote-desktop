@@ -1,0 +1,40 @@
+name: Windows build and tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Build desktop application
+        run: .\build.ps1
+
+      - name: Run isolated tests
+        run: .\test.ps1
+
+      - name: Upload Windows application
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: daynote-windows-x64-${{ github.sha }}
+          path: |
+            build/Daynote.exe
+            build/Daynote.exe.config
+            build/Daynote.ico
+          if-no-files-found: error
+          retention-days: 14
