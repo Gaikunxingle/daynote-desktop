@@ -1,4 +1,4 @@
-# The preview has its own profile. Existing Daynote data is copied once and never modified here.
+﻿# The preview has its own profile. Existing Daynote data is copied once and never modified here.
 $ErrorActionPreference = 'Stop'
 $packageRoot = Split-Path -Parent $PSScriptRoot
 $executable = Join-Path $packageRoot 'Windows\Daynote.exe'

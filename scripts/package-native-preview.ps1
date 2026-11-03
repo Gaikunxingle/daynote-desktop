@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
 $sourceRoot = Split-Path -Parent $PSScriptRoot
@@ -8,6 +8,13 @@ $packageRoot = Join-Path $releaseRoot ('Daynote-Native-Preview-' + $stamp)
 New-Item -ItemType Directory -Path $packageRoot,(Join-Path $packageRoot 'Windows'),(Join-Path $packageRoot 'scripts') -Force | Out-Null
 foreach ($file in @('Daynote.exe','Daynote.exe.config')) {
     Copy-Item -LiteralPath (Join-Path $sourceRoot ('build\' + $file)) -Destination (Join-Path $packageRoot 'Windows')
+}
+$macArchive = Join-Path $sourceRoot 'qa\verified-mac\Daynote-Mac-Preview.zip'
+if (Test-Path -LiteralPath $macArchive) {
+    $macOut = Join-Path $packageRoot 'Mac'
+    New-Item -ItemType Directory -Path $macOut -Force | Out-Null
+    Copy-Item -LiteralPath $macArchive -Destination $macOut
+    Copy-Item -LiteralPath (Join-Path $sourceRoot 'qa\verified-mac\Daynote-Mac-Preview.sha256') -Destination $macOut
 }
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'scripts\start-sync-preview.ps1') -Destination (Join-Path $packageRoot 'scripts')
 @'
@@ -25,6 +32,7 @@ Get-ChildItem -LiteralPath $appleRoot -File -Recurse | Where-Object { $_.FullNam
     Copy-Item -LiteralPath $_.FullName -Destination $destination
 }
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'docs\NATIVE_PREVIEW_GUIDE.html') -Destination (Join-Path $packageRoot '先读我.html')
+Copy-Item -LiteralPath (Join-Path $sourceRoot 'docs\NATIVE_VALIDATION.json') -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'LICENSE') -Destination $packageRoot
 $zip = $packageRoot + '.zip'
 Compress-Archive -Path (Join-Path $packageRoot '*') -DestinationPath $zip

@@ -1,0 +1,30 @@
+{
+  "date": "2026-11-03",
+  "version": "2.5.0 private native preview",
+  "windows": {
+    "local_build": "passed",
+    "isolated_checks": 212,
+    "real_http_checks": 15,
+    "ui": "light/dark calendar and sync dialog observed with synthetic isolated profile",
+    "ci": "https://github.com/Gaikunxingle/daynote-desktop/actions/runs/41650917010"
+  },
+  "cloud": {
+    "sql_transaction_checks": "passed including anon privileges, isolation, conflicts, idempotency and rollback",
+    "node_real_http_checks": 11,
+    "test_accounts_removed": true,
+    "personal_accounts": 2,
+    "real_user_schedules_uploaded_during_development": false
+  },
+  "apple": {
+    "core_tests": 13,
+    "failures": 0,
+    "ios_simulator_build": "passed",
+    "ios_device_unsigned_build": "passed",
+    "macos_native_build": "passed",
+    "macos_universal_adhoc_build_and_signature_verification": "passed",
+    "source_commit": "63c7127696dd886e5646eb1da9ea274270bf141e",
+    "ci": "https://github.com/Gaikunxingle/daynote-desktop/actions/runs/41650916983",
+    "mac_archive_sha256": "f0832333c41079104eb150d655dfafb9a95c70c123d502cd5ac027349b82a3f1",
+    "physical_device_installation_and_notifications": "not yet verified"
+  }
+}
