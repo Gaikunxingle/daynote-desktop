@@ -20,6 +20,7 @@ namespace Daynote
         [DataMember(Order = 7)] public DateTime? NotifiedAt;
         [DataMember(Order = 8)] public DateTime? EndAt;
         [DataMember(Order = 9)] public string ColorId;
+        [DataMember(Order = 10)] public bool IsDeadline;
 
         public TaskItem() { Defaults(); }
         [OnDeserializing] private void BeforeRead(StreamingContext context) { Defaults(); }
@@ -31,6 +32,7 @@ namespace Daynote
             HasTime = true;
             ReminderMinutes = -1;
             ColorId = "blue";
+            IsDeadline = false;
         }
     }
 
@@ -58,6 +60,7 @@ namespace Daynote
         [DataMember(Order = 7)] public string ThemeMode;
         [DataMember(Order = 8)] public int PlacementVersion;
         [DataMember(Order = 9)] public bool FollowPrimaryTopRight;
+        [DataMember(Order = 10)] public double DeadlinePanelRatio;
 
         public AppSettings() { Defaults(); }
         [OnDeserializing] private void BeforeRead(StreamingContext context)
@@ -78,6 +81,7 @@ namespace Daynote
             ThemeMode = "system";
             PlacementVersion = 1;
             FollowPrimaryTopRight = true;
+            DeadlinePanelRatio = 0;
         }
     }
 
@@ -194,7 +198,7 @@ namespace Daynote
         }
 
         private static DataContractJsonSerializer Serializer() { return new DataContractJsonSerializer(typeof(AppData)); }
-        private static AppData ReadValidated(string path)
+        internal static AppData ReadValidated(string path)
         {
             AppData result;
             using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -263,8 +267,9 @@ namespace Daynote
                 settings.PlacementVersion = 1;
             }
             if (settings.ThemeMode != "system" && settings.ThemeMode != "light" && settings.ThemeMode != "dark") settings.ThemeMode = "system";
-            if (double.IsNaN(settings.Width) || double.IsInfinity(settings.Width) || settings.Width < 560 || settings.Width > 1400) settings.Width = 620;
-            if (double.IsNaN(settings.Height) || double.IsInfinity(settings.Height) || settings.Height < 500 || settings.Height > 1200) settings.Height = 560;
+            if (double.IsNaN(settings.Width) || double.IsInfinity(settings.Width) || settings.Width < 560 || settings.Width > 16384) settings.Width = 620;
+            if (double.IsNaN(settings.Height) || double.IsInfinity(settings.Height) || settings.Height < 420 || settings.Height > 16384) settings.Height = 560;
+            if (double.IsNaN(settings.DeadlinePanelRatio) || double.IsInfinity(settings.DeadlinePanelRatio) || settings.DeadlinePanelRatio < 0 || settings.DeadlinePanelRatio > 1) settings.DeadlinePanelRatio = 0;
             if (double.IsNaN(settings.Opacity) || double.IsInfinity(settings.Opacity) || settings.Opacity < .35 || settings.Opacity > 1) settings.Opacity = 1;
             if (double.IsInfinity(settings.Left)) settings.Left = double.NaN;
             if (double.IsInfinity(settings.Top)) settings.Top = double.NaN;
@@ -296,6 +301,9 @@ namespace Daynote
         {
             if (item == null || !item.DueAt.HasValue) return "未设日期";
             DateTime due = item.DueAt.Value;
+            if (item.IsDeadline)
+                return "截止 " + due.ToString("yyyy年M月d日", CultureInfo.InvariantCulture) + " " + Weekdays[(int)due.DayOfWeek]
+                    + (item.HasTime ? " · " + due.ToString("HH:mm", CultureInfo.InvariantCulture) : "");
             return due.ToString("yyyy年M月d日", CultureInfo.InvariantCulture) + " " + Weekdays[(int)due.DayOfWeek]
                 + " · " + (item.HasTime ? due.ToString("HH:mm", CultureInfo.InvariantCulture) : "全天");
         }

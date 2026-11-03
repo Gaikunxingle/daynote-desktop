@@ -23,6 +23,12 @@ namespace Daynote
         private readonly CheckBox endEnabled;
         private readonly ComboBox reminderBox;
         private readonly ComboBox colorBox;
+        private readonly ComboBox typeBox;
+        private readonly TextBlock heading;
+        private readonly TextBlock introduction;
+        private readonly TextBlock startDateLabel;
+        private readonly Grid schedule;
+        private readonly StackPanel endSection;
         private readonly TextBlock errorText;
         private readonly TextBlock dateHelp;
         private readonly Brush textBrush;
@@ -36,9 +42,10 @@ namespace Daynote
 
         public TaskItem Result { get; private set; }
 
-        public TaskEditor(TaskItem original, bool darkMode, DateTime? initialDate = null)
+        public TaskEditor(TaskItem original, bool darkMode, DateTime? initialDate = null, bool initialIsDeadline = false)
         {
             this.original = original;
+            bool isDeadline = original == null ? initialIsDeadline : original.IsDeadline;
             Title = original == null ? "添加提醒" : "编辑提醒";
             Width = 520;
             Height = Math.Min(790, SystemParameters.WorkArea.Height - 48);
@@ -71,21 +78,38 @@ namespace Daynote
             };
             outer.Children.Add(scroll);
 
-            form.Children.Add(new TextBlock
+            heading = new TextBlock
             {
                 Text = original == null ? "新的日程" : "编辑日程",
                 Foreground = textBrush,
                 FontSize = 23,
                 FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 0, 0, 5)
-            });
-            form.Children.Add(new TextBlock
+            };
+            form.Children.Add(heading);
+            introduction = new TextBlock
             {
                 Text = "安排好时间，把值得记住的事留在这里。",
                 Foreground = mutedBrush,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 20)
-            });
+            };
+            form.Children.Add(introduction);
+
+            form.Children.Add(Label("事项类型"));
+            typeBox = new ComboBox
+            {
+                Height = 36,
+                FontSize = 13,
+                Padding = new Thickness(8, 4, 8, 4),
+                Foreground = Brushes.Black,
+                Margin = new Thickness(0, 0, 0, 17)
+            };
+            typeBox.Items.Add("日程");
+            typeBox.Items.Add("截止待办");
+            typeBox.SelectedIndex = isDeadline ? 1 : 0;
+            AutomationProperties.SetName(typeBox, "事项类型");
+            form.Children.Add(typeBox);
 
             titleBox = MakeTextBox("事项名称", 200);
             titleBox.Text = original == null ? "" : original.Title ?? "";
@@ -111,14 +135,15 @@ namespace Daynote
             }
             if (original != null && original.DueAt.HasValue) initial = original.DueAt.Value;
 
-            var schedule = new Grid();
+            schedule = new Grid();
             schedule.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             schedule.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
             schedule.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
             form.Children.Add(schedule);
 
             var dateGroup = new StackPanel();
-            dateGroup.Children.Add(Label("开始日期"));
+            startDateLabel = Label("开始日期");
+            dateGroup.Children.Add(startDateLabel);
             datePicker = new DatePicker
             {
                 SelectedDate = initial.Date,
@@ -140,7 +165,7 @@ namespace Daynote
             {
                 e.ThrowException = false;
                 dateParseFailed = true;
-                ShowError("请填写有效日期，例如 2026/10/26。", datePicker);
+                ShowError(typeBox.SelectedIndex == 1 ? "请填写有效的截止日期。" : "请填写有效日期，例如 2026/10/26。", datePicker);
             };
             datePicker.SelectedDateChanged += delegate { dateParseFailed = false; };
             datePicker.AddHandler(TextBox.TextChangedEvent, new TextChangedEventHandler(delegate { dateParseFailed = false; }));
@@ -148,7 +173,7 @@ namespace Daynote
             schedule.Children.Add(dateGroup);
 
             var timeGroup = new StackPanel();
-            timeEnabled = MakeCheckBox("具体时间", original == null || original.HasTime);
+            timeEnabled = MakeCheckBox("具体时间", original == null ? !isDeadline : original.HasTime);
             timeEnabled.Margin = new Thickness(0, 0, 0, 7);
             timeGroup.Children.Add(timeEnabled);
             timeBox = MakeTextBox("开始时间（24小时制）", 5);
@@ -169,7 +194,9 @@ namespace Daynote
 
             endEnabled = MakeCheckBox("设置结束时间", original != null && original.HasTime && original.EndAt.HasValue);
             endEnabled.Margin = new Thickness(0, 0, 0, 10);
-            form.Children.Add(endEnabled);
+            endSection = new StackPanel();
+            form.Children.Add(endSection);
+            endSection.Children.Add(endEnabled);
             DateTime initialEnd = original != null && original.EndAt.HasValue ? original.EndAt.Value
                 : initial <= DateTime.MaxValue.AddHours(-1) ? initial.AddHours(1) : initial;
             var endSchedule = new Grid { Margin = new Thickness(0, 0, 0, 7) };
@@ -209,8 +236,8 @@ namespace Daynote
             endTimeGroup.Children.Add(endTimeBox);
             Grid.SetColumn(endTimeGroup, 2);
             endSchedule.Children.Add(endTimeGroup);
-            form.Children.Add(endSchedule);
-            form.Children.Add(new TextBlock
+            endSection.Children.Add(endSchedule);
+            endSection.Children.Add(new TextBlock
             {
                 Text = "结束时间可不填；跨夜日程请选择下一天的结束日期。",
                 Foreground = mutedBrush,
@@ -231,7 +258,7 @@ namespace Daynote
             AutomationProperties.SetName(reminderBox, "提醒时间");
             string[] options = { "不提醒", "准时提醒", "提前 5 分钟", "提前 15 分钟", "提前 30 分钟", "提前 1 小时", "提前 1 天" };
             foreach (string option in options) reminderBox.Items.Add(option);
-            int selected = original == null ? 1 : Array.IndexOf(reminderValues, original.ReminderMinutes);
+            int selected = original == null ? (isDeadline ? 0 : 1) : Array.IndexOf(reminderValues, original.ReminderMinutes);
             // Preserve a valid custom interval when opening data created by a newer version.
             if (selected < 0 && original != null && original.ReminderMinutes >= 0)
             {
@@ -243,7 +270,7 @@ namespace Daynote
             optionsGrid.Children.Add(reminderGroup);
 
             var colorGroup = new StackPanel();
-            colorGroup.Children.Add(Label("日程颜色"));
+            colorGroup.Children.Add(Label("事项颜色"));
             colorBox = new ComboBox { Height = 36, FontSize = 13, Padding = new Thickness(8, 4, 8, 4), Foreground = Brushes.Black };
             string[] colorNames = { "蓝色", "紫色", "绿色", "橙色", "青色", "红色" };
             string[] colorHexes = { "#007AFF", "#AF52DE", "#34C759", "#FF9500", "#30B0C7", "#FF3B30" };
@@ -257,7 +284,7 @@ namespace Daynote
                 colorBox.Items.Add(item);
             }
             colorBox.SelectedIndex = Math.Max(0, Array.IndexOf(colorIds, original == null ? "blue" : original.ColorId));
-            AutomationProperties.SetName(colorBox, "日程颜色");
+            AutomationProperties.SetName(colorBox, "事项颜色");
             colorGroup.Children.Add(colorBox);
             Grid.SetColumn(colorGroup, 2);
             optionsGrid.Children.Add(colorGroup);
@@ -309,6 +336,7 @@ namespace Daynote
             timeEnabled.Unchecked += delegate { UpdateEnabled(); };
             endEnabled.Checked += delegate { UpdateEnabled(); };
             endEnabled.Unchecked += delegate { UpdateEnabled(); };
+            typeBox.SelectionChanged += delegate { UpdateEnabled(); };
             UpdateEnabled();
             Loaded += delegate { titleBox.Focus(); titleBox.SelectAll(); };
             PreviewKeyDown += delegate(object sender, KeyEventArgs e)
@@ -323,15 +351,30 @@ namespace Daynote
 
         private void UpdateEnabled()
         {
-            bool hasDate = dateEnabled.IsChecked == true;
+            bool isDeadline = typeBox.SelectedIndex == 1;
+            bool hasDate = isDeadline || dateEnabled.IsChecked == true;
+            heading.Text = (original == null ? "新的" : "编辑") + (isDeadline ? "截止待办" : "日程");
+            introduction.Text = isDeadline ? "完成前每天显示在日历下方，过期后也会保留，直到勾选完成。"
+                : "安排好时间，把值得记住的事留在这里。";
+            dateEnabled.Visibility = isDeadline ? Visibility.Collapsed : Visibility.Visible;
+            schedule.Margin = new Thickness(0, isDeadline ? 17 : 0, 0, 0);
+            startDateLabel.Text = isDeadline ? "截止日期 *" : "开始日期";
+            AutomationProperties.SetName(datePicker, isDeadline ? "截止日期" : "开始日期");
+            timeEnabled.Content = isDeadline ? "截止时刻" : "具体时间";
+            AutomationProperties.SetName(timeEnabled, isDeadline ? "截止时刻" : "具体时间");
+            AutomationProperties.SetName(timeBox, isDeadline ? "截止时间（24小时制）" : "开始时间（24小时制）");
+            endSection.Visibility = isDeadline ? Visibility.Collapsed : Visibility.Visible;
             datePicker.IsEnabled = hasDate;
             timeEnabled.IsEnabled = hasDate;
             timeBox.IsEnabled = hasDate && timeEnabled.IsChecked == true;
-            endEnabled.IsEnabled = hasDate && timeEnabled.IsChecked == true;
+            endEnabled.IsEnabled = !isDeadline && hasDate && timeEnabled.IsChecked == true;
             endDatePicker.IsEnabled = endEnabled.IsEnabled && endEnabled.IsChecked == true;
             endTimeBox.IsEnabled = endDatePicker.IsEnabled;
             reminderBox.IsEnabled = hasDate;
-            dateHelp.Text = !hasDate ? "未设置日期的事项不会发送定时提醒。"
+            dateHelp.Text = isDeadline ? (timeEnabled.IsChecked == true
+                ? "请在这一时刻前完成；使用电脑的本地时间，按 24 小时制填写。"
+                : "未设置截止时刻时，可在截止日期当天完成；开启提醒时以当天 09:00 为准。")
+                : !hasDate ? "未设置日期的事项不会发送定时提醒。"
                 : timeEnabled.IsChecked == true ? "使用电脑的本地时间，按 24 小时制填写。"
                 : "全天事项显示为“全天”；开启提醒时以当天 09:00 为准。";
         }
@@ -346,15 +389,17 @@ namespace Daynote
             }
             DateTime? due = null;
             DateTime? end = null;
-            bool hasTime = dateEnabled.IsChecked == true && timeEnabled.IsChecked == true;
+            bool isDeadline = typeBox.SelectedIndex == 1;
+            bool hasDate = isDeadline || dateEnabled.IsChecked == true;
+            bool hasTime = hasDate && timeEnabled.IsChecked == true;
             int reminder = -1;
-            if (dateEnabled.IsChecked == true)
+            if (hasDate)
             {
                 DateTime parsedDate;
                 bool parsed = DateTime.TryParse(datePicker.Text, CultureInfo.GetCultureInfo("zh-CN"), DateTimeStyles.AllowWhiteSpaces, out parsedDate);
                 if (!parsed || dateParseFailed || !datePicker.SelectedDate.HasValue)
                 {
-                    ShowError("请填写有效日期，例如 2026/10/26。", datePicker);
+                    ShowError(isDeadline ? "请填写有效的截止日期。" : "请填写有效日期，例如 2026/10/26。", datePicker);
                     return;
                 }
                 DateTime selected = parsedDate.Date;
@@ -370,7 +415,7 @@ namespace Daynote
                     selected = selected.AddHours(parsedTime.Hour).AddMinutes(parsedTime.Minute);
                 }
                 due = selected;
-                if (hasTime && endEnabled.IsChecked == true)
+                if (!isDeadline && hasTime && endEnabled.IsChecked == true)
                 {
                     DateTime parsedEndDate;
                     bool endParsed = DateTime.TryParse(endDatePicker.Text, CultureInfo.GetCultureInfo("zh-CN"), DateTimeStyles.AllowWhiteSpaces, out parsedEndDate);
@@ -398,7 +443,7 @@ namespace Daynote
                     : original != null ? original.ReminderMinutes : -1;
             }
             bool scheduleUnchanged = original != null && Nullable.Equals(original.DueAt, due)
-                && original.HasTime == hasTime && original.ReminderMinutes == reminder;
+                && original.HasTime == hasTime && original.ReminderMinutes == reminder && original.IsDeadline == isDeadline;
             Result = new TaskItem
             {
                 Id = original == null ? Guid.NewGuid().ToString("N") : original.Id,
@@ -406,6 +451,7 @@ namespace Daynote
                 Notes = notesBox.Text.Trim(),
                 DueAt = due,
                 EndAt = end,
+                IsDeadline = isDeadline,
                 ColorId = colorIds[Math.Max(0, colorBox.SelectedIndex)],
                 HasTime = hasTime,
                 ReminderMinutes = reminder,

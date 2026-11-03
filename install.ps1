@@ -82,7 +82,7 @@ $powerShellExecutable = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1
 $uninstallCommand = '"' + $powerShellExecutable + '" -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $installDirectory 'uninstall.ps1') + '"'
 $registryValues = @{
     DisplayName = $applicationName
-    DisplayVersion = '2.2.0'
+    DisplayVersion = '2.4.1'
     Publisher = 'Daynote contributors'
     InstallLocation = $installDirectory
     DisplayIcon = (Join-Path $installDirectory 'Daynote.ico')
@@ -95,7 +95,7 @@ foreach ($entry in $registryValues.GetEnumerator()) {
 New-ItemProperty -Path $uninstallKey -Name 'NoModify' -Value 1 -PropertyType DWord -Force | Out-Null
 New-ItemProperty -Path $uninstallKey -Name 'NoRepair' -Value 1 -PropertyType DWord -Force | Out-Null
 
-if (-not $NoLaunch) { Start-Process -FilePath $executable -WorkingDirectory $installDirectory -WindowStyle Normal }
+if (-not $NoLaunch) { Start-Process -FilePath $executable -WorkingDirectory $installDirectory -WindowStyle Hidden }
 Write-Output "已安装：$installDirectory"
 Write-Output '已创建桌面和开始菜单快捷方式。首次安装启用开机启动，升级保留原设置。'
-Write-Output ('数据保存在：' + (Join-Path $env:LOCALAPPDATA 'Daynote\Data'))
+Write-Output ('数据保存在：' + (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Daynote\Data'))

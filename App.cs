@@ -18,8 +18,8 @@ using Forms = System.Windows.Forms;
 
 [assembly: AssemblyTitle("朝夕日历")]
 [assembly: AssemblyProduct("朝夕提醒")]
-[assembly: AssemblyVersion("2.2.0.0")]
-[assembly: AssemblyFileVersion("2.2.0.0")]
+[assembly: AssemblyVersion("2.4.1.0")]
+[assembly: AssemblyFileVersion("2.4.1.0")]
 
 namespace Daynote
 {
@@ -27,18 +27,22 @@ namespace Daynote
     {
         internal static string Executable { get { return Assembly.GetExecutingAssembly().Location; } }
         internal static string DataRoot;
+        internal static bool UsesDefaultDataRoot;
         internal static bool Preview, Inspect;
         internal static string CaptureDirectory;
         internal static DateTime? StartDay;
         [STAThread]
         public static void Main(string[] args)
         {
-            DataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Daynote", "Data");
+            DataRoot = null;
             for (int i = 0; i < args.Length; i++) {
                 if (args[i] == "--data-dir" && i + 1 < args.Length) DataRoot = Path.GetFullPath(args[++i]);
                 else if (args[i] == "--capture-dir" && i + 1 < args.Length) CaptureDirectory = Path.GetFullPath(args[++i]);
                 else if (args[i] == "--day" && i + 1 < args.Length) { DateTime value; if(DateTime.TryParseExact(args[++i],"yyyy-MM-dd",CultureInfo.InvariantCulture,DateTimeStyles.None,out value)) StartDay=value; }
             }
+            UsesDefaultDataRoot = DataRoot == null;
+            try { if (UsesDefaultDataRoot) DataRoot = DataPaths.DefaultRoot(); }
+            catch (Exception error) { MessageBox.Show("无法确定日历数据位置，未打开空白日历。\n" + error.Message, "朝夕日历", MessageBoxButton.OK, MessageBoxImage.Error); return; }
             Preview = args.Contains("--preview");
             Inspect = args.Contains("--inspect");
             string key;
@@ -60,10 +64,15 @@ namespace Daynote
                         e.Handled = true;
                     };
                     app.Startup += delegate {
-                        controller = new AppController(app);
-                        ThreadPool.RegisterWaitForSingleObject(open, delegate { app.Dispatcher.BeginInvoke(new Action(controller.ShowPanel)); }, null, -1, false);
-                        ThreadPool.RegisterWaitForSingleObject(quit, delegate { app.Dispatcher.BeginInvoke(new Action(controller.Exit)); }, null, -1, false);
-                        controller.Start();
+                        try {
+                            controller = new AppController(app);
+                            ThreadPool.RegisterWaitForSingleObject(open, delegate { app.Dispatcher.BeginInvoke(new Action(controller.ShowPanel)); }, null, -1, false);
+                            ThreadPool.RegisterWaitForSingleObject(quit, delegate { app.Dispatcher.BeginInvoke(new Action(controller.Exit)); }, null, -1, false);
+                            controller.Start();
+                        } catch (Exception error) {
+                            MessageBox.Show("无法打开日历，原有数据已保留。\n" + error.Message, "朝夕日历", MessageBoxButton.OK, MessageBoxImage.Error);
+                            app.Shutdown(1);
+                        }
                     };
                     app.Run();
                 }
@@ -87,6 +96,7 @@ namespace Daynote
         bool exiting, editing, pendingSave, saveWarningShown;
         DateTime day;
         int ticks;
+        int overdueDeadlineCount = -1;
         readonly List<Window> notices = new List<Window>();
         readonly HashSet<string> notifiedThisRun = new HashSet<string>();
         public bool Dark {
@@ -96,7 +106,13 @@ namespace Daynote
                 try { using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")) return k != null && Convert.ToInt32(k.GetValue("AppsUseLightTheme", 1)) == 0; } catch { return false; }
             }
         }
-        public AppController(Application app) { this.app = app; Store = new DataStore(Program.DataRoot); Data = Store.Load(); }
+        public AppController(Application app)
+        {
+            this.app = app;
+            if (Program.UsesDefaultDataRoot) DataPaths.MigrateLegacyData(Program.DataRoot);
+            Store = new DataStore(Program.DataRoot);
+            Data = Store.Load();
+        }
         public void Start()
         {
             if (Program.Preview && Data.Tasks.Count == 0) {
@@ -164,6 +180,7 @@ namespace Daynote
         void RebuildForDisplayChange()
         {
             if(exiting||rebuilding)return;
+            if(window!=null&&window.IsLayoutInteractionActive) { ScheduleDisplayRefresh();return; }
             rebuilding=true;
             try {
                 CalendarViewState state=window==null?lastViewState:window.CaptureViewState();
@@ -182,7 +199,8 @@ namespace Daynote
             if(window==null)return;
             if (++ticks % 3 == 0) window.MaintainDesktop();
             if(window==null)return;
-            if (day != DateTime.Today || window.IsDark != Dark) { day = DateTime.Today; window.Render(); }
+            int overdue = Data.Tasks.Count(t => DeadlineLogic.IsOverdue(t, DateTime.Now));
+            if (day != DateTime.Today || window.IsDark != Dark || overdue != overdueDeadlineCount) { day = DateTime.Today; overdueDeadlineCount = overdue; window.Render(); }
             if (pendingSave && Save(false)) pendingSave = false;
             bool notified = false;
             foreach (var task in Data.Tasks.Where(t => ReminderEngine.ShouldNotify(t, DateTime.Now)).ToList()) {
@@ -203,12 +221,12 @@ namespace Daynote
                 return false;
             }
         }
-        public void Edit(TaskItem task, DateTime? initialDate = null)
+        public void Edit(TaskItem task, DateTime? initialDate = null, bool initialIsDeadline = false)
         {
             if (editing) return;
             editing = true;
             try {
-                var editor = new TaskEditor(task, Dark, initialDate ?? (window == null ? DateTime.Today : window.SelectedDate));
+                var editor = new TaskEditor(task, Dark, initialDate ?? (window == null ? DateTime.Today : window.SelectedDate), initialIsDeadline);
                 editor.WindowStartupLocation = WindowStartupLocation.CenterScreen;
                 if (editor.ShowDialog() == true) {
                     var old = Data.Tasks.ToList();

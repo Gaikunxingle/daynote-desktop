@@ -17,7 +17,9 @@ if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
 
 $suites = @(
     @{ Name = 'CoreTests'; Sources = @('Core.cs', 'CoreTests.cs') },
-    @{ Name = 'CalendarLogicTests'; Sources = @('Core.cs', 'CalendarLogic.cs', 'CalendarLogicTests.cs') }
+    @{ Name = 'CalendarLogicTests'; Sources = @('Core.cs', 'CalendarLogic.cs', 'CalendarLogicTests.cs') },
+    @{ Name = 'ResizeGeometryTests'; Sources = @('DisplayLayout.cs', 'ResizeGeometryTests.cs') },
+    @{ Name = 'DataPathsTests'; Sources = @('Core.cs', 'DataPaths.cs', 'DataPathsTests.cs') }
 )
 $references = @('System.dll', 'System.Core.dll', 'System.Runtime.Serialization.dll', 'System.Xml.dll') |
     ForEach-Object { '/r:' + (Join-Path $framework $_) }
@@ -66,7 +68,7 @@ try {
             throw "$name failed (exit code $LASTEXITCODE)."
         }
     }
-    Write-Host 'PASS: both Daynote test suites completed successfully.'
+    Write-Host 'PASS: all Daynote test suites completed successfully.'
 }
 finally {
     if ($locationChanged) { Pop-Location }

@@ -88,11 +88,20 @@ jobs:
             }
           }
 
+          $version = $tag.TrimStart('v')
+          $changelog = Get-Content -LiteralPath CHANGELOG.md -Raw -Encoding utf8
+          $section = [regex]::Match($changelog, '(?ms)^## ' + [regex]::Escape($version) + '[^\r\n]*\r?\n(?<notes>.*?)(?=^## |\z)')
+          if (-not $section.Success) { throw "Missing changelog for $tag; not creating a release." }
+          $instructions = @'
+          下载 ZIP 并完整解压，运行 build/Daynote.exe；需要桌面快捷方式和开机启动时，按 README.md 运行 install.ps1。SHA256SUMS.txt 可核验下载文件。发行包不含个人日程，文档截图使用虚构示例。
+
+          从旧版升级前请先从托盘退出旧版。新版会将已有事项迁移到用户目录下的 Daynote\Data，并保留原件；迁移后请使用新版程序或更新后的快捷方式，避免旧版继续编辑另一份数据。
+          '@
           $body = @{
             tag_name = $tag
             target_commitish = $env:GITHUB_SHA
             name = "Daynote $tag"
-            body = "朝夕提醒 Windows 64 位版本。请下载 ZIP 并完整解压，双击 build/Daynote.exe 即可使用；需要桌面快捷方式和开机启动时，可按 README.md 运行 install.ps1。SHA256SUMS.txt 用于核验下载文件。发行包不含个人日程，首次启动为空白日历；文档截图使用虚构示例。"
+            body = $section.Groups['notes'].Value.Trim() + "`n`n" + $instructions.Trim()
             draft = $true
             prerelease = $false
           } | ConvertTo-Json

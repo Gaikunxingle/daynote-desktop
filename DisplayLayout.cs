@@ -96,6 +96,45 @@ namespace Daynote
                 Rect = new PixelRect { Left = left, Top = top, Right = left + width, Bottom = top + height } };
         }
 
+        // Cursor deltas and bounds are physical pixels. Always derive a frame
+        // from the original drag snapshot rather than accumulating rounded DIP
+        // deltas, which otherwise drift on mixed-DPI desktop child windows.
+        public static DisplayPlacement Resize(DisplayMonitor monitor, PixelRect initial,
+            int horizontalEdge, int verticalEdge, int deltaX, int deltaY,
+            double minimumWidthDip, double minimumHeightDip, double marginDip)
+        {
+            if (monitor == null) throw new ArgumentNullException("monitor");
+            if (monitor.Work.Width <= 0 || monitor.Work.Height <= 0) throw new ArgumentException("显示器工作区无效。");
+            if (horizontalEdge < -1 || horizontalEdge > 1 || verticalEdge < -1 || verticalEdge > 1)
+                throw new ArgumentOutOfRangeException("horizontalEdge");
+            if (Double.IsNaN(minimumWidthDip) || Double.IsInfinity(minimumWidthDip) || minimumWidthDip <= 0 ||
+                Double.IsNaN(minimumHeightDip) || Double.IsInfinity(minimumHeightDip) || minimumHeightDip <= 0)
+                throw new ArgumentOutOfRangeException("minimumWidthDip");
+            if (Double.IsNaN(marginDip) || Double.IsInfinity(marginDip)) marginDip = 0;
+            double sx = Math.Max(1, monitor.DpiX) / 96.0, sy = Math.Max(1, monitor.DpiY) / 96.0;
+            int mx = Math.Max(0, Math.Min(monitor.Work.Width / 4, (int)Math.Round(Math.Max(0, marginDip) * sx)));
+            int my = Math.Max(0, Math.Min(monitor.Work.Height / 4, (int)Math.Round(Math.Max(0, marginDip) * sy)));
+            var work = new PixelRect { Left=monitor.Work.Left+mx, Top=monitor.Work.Top+my, Right=monitor.Work.Right-mx, Bottom=monitor.Work.Bottom-my };
+            int minWidth = Math.Min(work.Width, Math.Max(1, (int)Math.Ceiling(minimumWidthDip*sx)));
+            int minHeight = Math.Min(work.Height, Math.Max(1, (int)Math.Ceiling(minimumHeightDip*sy)));
+            int width = Math.Max(minWidth, Math.Min(initial.Width, work.Width));
+            int height = Math.Max(minHeight, Math.Min(initial.Height, work.Height));
+            int left = Clamp(initial.Left, work.Left, work.Right-width);
+            int top = Clamp(initial.Top, work.Top, work.Bottom-height);
+            int right = left+width, bottom = top+height;
+            if (horizontalEdge < 0) left = Clamp((long)left+deltaX, work.Left, right-minWidth);
+            else if (horizontalEdge > 0) right = Clamp((long)right+deltaX, left+minWidth, work.Right);
+            if (verticalEdge < 0) top = Clamp((long)top+deltaY, work.Top, bottom-minHeight);
+            else if (verticalEdge > 0) bottom = Clamp((long)bottom+deltaY, top+minHeight, work.Bottom);
+            var rect = new PixelRect { Left=left, Top=top, Right=right, Bottom=bottom };
+            return new DisplayPlacement { Monitor=monitor, Rect=rect, WidthDip=rect.Width/sx, HeightDip=rect.Height/sy };
+        }
+
+        private static int Clamp(long value, int lower, int upper)
+        {
+            return (int)Math.Max(lower, Math.Min(value, upper));
+        }
+
         private static PixelRect Convert(RECT value) { return new PixelRect { Left=value.Left, Top=value.Top, Right=value.Right, Bottom=value.Bottom }; }
         [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left,Top,Right,Bottom; }
         [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]

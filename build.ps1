@@ -22,7 +22,7 @@ $iconPath = Join-Path $out 'Daynote.ico'
 $stream = [System.IO.File]::Create($iconPath)
 $icon.Save($stream)
 $stream.Dispose(); $icon.Dispose(); $red.Dispose(); $ink.Dispose(); $font.Dispose(); $g.Dispose(); $bitmap.Dispose()
-$sources = @('App.cs','Core.cs','CalendarLogic.cs','CalendarWindow.cs','DayView.cs','TaskEditor.cs','DesktopHost.cs','DisplayLayout.cs') | ForEach-Object { Join-Path $base $_ }
+$sources = @('App.cs','Core.cs','DataPaths.cs','CalendarLogic.cs','CalendarWindow.cs','DayView.cs','TaskEditor.cs','DesktopHost.cs','DisplayLayout.cs') | ForEach-Object { Join-Path $base $_ }
 & (Join-Path $framework 'csc.exe') /nologo /target:winexe /platform:x64 /optimize+ /utf8output "/out:$out\Daynote.exe" "/win32icon:$iconPath" "/win32manifest:$base\app.manifest" @refs @sources
 if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 @'

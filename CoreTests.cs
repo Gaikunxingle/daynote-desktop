@@ -20,7 +20,7 @@ public static class CoreTests
         {
             DataStore store = new DataStore(root);
             AppData data = store.Load();
-            Check(data.Version == 2 && data.Tasks.Count == 0 && data.Settings.DesktopMode && data.Settings.ThemeMode == "system" && data.Settings.Width == 620 && data.Settings.Height == 560 && data.Settings.PlacementVersion == 1 && data.Settings.FollowPrimaryTopRight, "new compact calendar store defaults");
+            Check(data.Version == 2 && data.Tasks.Count == 0 && data.Settings.DesktopMode && data.Settings.ThemeMode == "system" && data.Settings.Width == 620 && data.Settings.Height == 560 && data.Settings.PlacementVersion == 1 && data.Settings.FollowPrimaryTopRight && data.Settings.DeadlinePanelRatio == 0, "new compact calendar store defaults with automatic panel height");
             TaskItem task = new TaskItem { Title = "提交项目报告", Notes = "预算表\n进度说明", DueAt = new DateTime(2026, 10, 27, 18, 0, 0), ReminderMinutes = 30 };
             data.Tasks.Add(task);
             store.Save(data);
@@ -28,6 +28,7 @@ public static class CoreTests
             Check(!json.Contains("NaN") && json.Contains("\"Left\":null"), "unset coordinates are valid JSON null");
             AppData loaded = store.Load();
             Check(loaded.Tasks.Count == 1 && loaded.Tasks[0].Notes == task.Notes && loaded.Tasks[0].DueAt == task.DueAt, "Chinese and date roundtrip");
+            Check(!loaded.Tasks[0].IsDeadline && !new TaskItem().IsDeadline, "existing and new events remain ordinary schedule items by default");
             Check(double.IsNaN(loaded.Settings.Left), "unset coordinate roundtrip");
             Check(ReminderEngine.FormatDue(task) == "2026年10月27日 周二 · 18:00", "Chinese weekday date formatting");
             DateTime trigger = task.DueAt.Value.AddMinutes(-30);
@@ -82,10 +83,12 @@ public static class CoreTests
             loaded.Settings.Opacity = double.NaN;
             loaded.Settings.Left = double.NegativeInfinity;
             loaded.Settings.ThemeMode = "unknown";
+            loaded.Settings.DeadlinePanelRatio = double.NaN;
             store.Save(loaded);
             var settings = store.Load().Settings;
             Check(settings.Width == 620 && settings.Height == 560 && settings.Opacity == 1, "invalid dimensions and opacity normalize before serialization");
             Check(double.IsNaN(settings.Left) && settings.ThemeMode == "system", "invalid coordinates and theme normalize");
+            Check(settings.DeadlinePanelRatio == 0, "non-finite panel ratio normalizes before JSON serialization");
             Check(!File.ReadAllText(store.FilePath).Contains("NaN") && !File.ReadAllText(store.FilePath).Contains("Infinity"), "normalized settings produce finite JSON values");
 
             TaskItem blockedTask = new TaskItem { Title = "保存失败测试", DueAt = DateTime.Now.AddMinutes(-1), ReminderMinutes = 0 };
@@ -132,6 +135,8 @@ public static class CoreTests
             Check(migrated.Tasks[0].Id == "old-timed" && migrated.Tasks[0].Title == "旧版已提醒" && migrated.Tasks[0].Notes == "不改旧备注" && migrated.Tasks[0].ReminderMinutes == 30 && migrated.Tasks[0].NotifiedAt.HasValue && !migrated.Tasks[0].Completed, "v1 migration preserves notification identity and details");
             Check(migrated.Tasks[1].Completed && migrated.Tasks[1].DueAt == null && migrated.Tasks[1].NotifiedAt == null && !migrated.Tasks[2].HasTime && migrated.Tasks[2].ReminderMinutes == 0, "v1 migration preserves completion, no-date and all-day semantics");
             Check(migrated.Tasks[0].EndAt == null && migrated.Tasks[1].EndAt == null && migrated.Tasks[2].EndAt == null && migrated.Tasks[0].ColorId == "blue", "migration never invents event endings");
+            Check(!migrated.Tasks[0].IsDeadline && !migrated.Tasks[1].IsDeadline && !migrated.Tasks[2].IsDeadline, "literal legacy data without deadline field remains ordinary schedule items");
+            Check(migrated.Settings.DeadlinePanelRatio == 0, "literal legacy settings without split ratio use automatic panel height");
             Check(migrated.Settings.Width == 620 && migrated.Settings.Height == 560 && double.IsNaN(migrated.Settings.Left) && double.IsNaN(migrated.Settings.Top) && migrated.Settings.PlacementVersion == 1 && migrated.Settings.FollowPrimaryTopRight && migrated.Settings.ThemeMode == "dark" && !migrated.Settings.DesktopMode && migrated.Settings.Opacity == .8, "v1 migration applies compact primary anchor while retaining other preferences");
             Check(Convert.ToBase64String(originalV1) == Convert.ToBase64String(File.ReadAllBytes(migrationStore.FilePath)) && migrationStore.LoadWarning == "", "migration does not alter or quarantine healthy v1 source during load");
             DateTime originalDue = migrated.Tasks[0].DueAt.Value;
@@ -184,15 +189,55 @@ public static class CoreTests
             Check(placement.Settings.Width == 760 && placement.Settings.Height == 650 && placement.Settings.Left == 155 && placement.Settings.Top == 95 && !placement.Settings.FollowPrimaryTopRight && placement.Settings.PlacementVersion == 1, "repeated loads retain post-migration desired size and manual placement");
             Check(placement.Tasks[0].DueAt == originalDue && placement.Tasks[0].NotifiedAt == originalNotified && placement.Tasks[1].Completed && placement.Tasks[0].ColorId == "teal", "later placement saves do not modify task schedule or statuses");
             placement.Settings.Width = 560;
-            placement.Settings.Height = 500;
+            placement.Settings.Height = 420;
             placementStore.Save(placement);
             var minimum = placementStore.Load().Settings;
-            Check(minimum.Width == 560 && minimum.Height == 500, "compact minimum dimensions accepted");
+            Check(minimum.Width == 560 && minimum.Height == 420, "readable minimum dimensions accepted for free resizing");
             placement.Settings.Width = 559;
-            placement.Settings.Height = 499;
+            placement.Settings.Height = 419;
             placementStore.Save(placement);
             var tooSmall = placementStore.Load().Settings;
             Check(tooSmall.Width == 620 && tooSmall.Height == 560, "undersized dimensions normalize to compact defaults");
+
+            placement.Settings.Width = 1823.5;
+            placement.Settings.Height = 1386.25;
+            placement.Settings.DeadlinePanelRatio = .3725;
+            placementStore.Save(placement);
+            var freeSize = placementStore.Load();
+            Check(freeSize.Settings.Width == 1823.5 && freeSize.Settings.Height == 1386.25 && freeSize.Settings.DeadlinePanelRatio == .3725, "continuous large-screen dimensions and split ratio survive reload without preset rounding");
+            Check(freeSize.Tasks[0].DueAt == originalDue && freeSize.Tasks[0].NotifiedAt == originalNotified && freeSize.Tasks[1].Completed && freeSize.Tasks[0].ColorId == "teal", "saving resize preferences preserves event dates notification state completion and colors");
+            freeSize.Settings.Width = 16384;
+            freeSize.Settings.Height = 16384;
+            freeSize.Settings.DeadlinePanelRatio = 1;
+            placementStore.Save(freeSize);
+            Check(placementStore.Load().Settings.Width == 16384 && placementStore.Load().Settings.Height == 16384 && placementStore.Load().Settings.DeadlinePanelRatio == 1, "finite upper boundaries persist for monitor-specific layout clamping");
+            freeSize.Settings.Width = 16384.1;
+            freeSize.Settings.Height = 16384.1;
+            placementStore.Save(freeSize);
+            Check(placementStore.Load().Settings.Width == 620 && placementStore.Load().Settings.Height == 560, "excessive dimensions normalize to defaults");
+            foreach (double badRatio in new[] { -.01, 1.01, Double.NegativeInfinity, Double.PositiveInfinity })
+            {
+                freeSize.Settings.DeadlinePanelRatio = badRatio;
+                placementStore.Save(freeSize);
+                Check(placementStore.Load().Settings.DeadlinePanelRatio == 0, "invalid split ratio restores automatic height: " + badRatio);
+            }
+
+            var deadlineStore = new DataStore(Path.Combine(root, "deadline-roundtrip"));
+            var deadlineData = new AppData();
+            var deadline = new TaskItem { Title = "提交材料", DueAt = new DateTime(2026, 11, 6), HasTime = false, IsDeadline = true };
+            deadlineData.Tasks.Add(deadline);
+            deadlineData.Tasks.Add(new TaskItem { Title = "正常课程", DueAt = deadline.DueAt.Value.AddHours(14), HasTime = true });
+            deadlineStore.Save(deadlineData);
+            var deadlineReload = deadlineStore.Load();
+            Check(deadlineReload.Tasks[0].IsDeadline && !deadlineReload.Tasks[1].IsDeadline && deadlineReload.Tasks[0].Id == deadline.Id && deadlineReload.Tasks[0].DueAt == deadline.DueAt && !deadlineReload.Tasks[0].HasTime, "deadline kind date and identity roundtrip separately from ordinary schedule items");
+            Check(ReminderEngine.FormatDue(deadlineReload.Tasks[0]) == "截止 2026年11月6日 周五", "date-only deadline label does not invent an execution time or all-day event");
+            deadlineReload.Tasks[0].Completed = true;
+            deadlineStore.Save(deadlineReload);
+            Check(deadlineStore.Load().Tasks[0].Completed && deadlineStore.Load().Tasks[0].IsDeadline, "completed deadline persists after restart");
+            deadlineReload.Tasks[0].Completed = false;
+            deadlineReload.Tasks[0].IsDeadline = false;
+            deadlineStore.Save(deadlineReload);
+            Check(!deadlineStore.Load().Tasks[0].IsDeadline && deadlineStore.Load().Tasks[0].DueAt == deadline.DueAt, "changing deadline back to schedule retains its date");
             Console.WriteLine("ALL " + count + " CHECKS PASSED");
             return 0;
         }

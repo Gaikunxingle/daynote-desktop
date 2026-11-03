@@ -45,6 +45,12 @@ namespace Daynote
         private bool placingExpanded;
         private string expandedMonitorDevice;
         private ExpandedSnapshot expandedSnapshot;
+        private DisplayMonitor resizeMonitor;
+        private PixelRect resizeOriginalBounds;
+        private POINT resizeOrigin;
+        private int resizeHorizontalEdge, resizeVerticalEdge;
+        private double resizeRequestedWidth, resizeRequestedHeight;
+        private DisplayPlacement resizePlacement;
 
         private sealed class ExpandedSnapshot
         {
@@ -59,6 +65,7 @@ namespace Daynote
         public bool IsExpanded { get; private set; }
         public double ExpandedWidthDip { get; private set; }
         public double ExpandedHeightDip { get; private set; }
+        public bool IsResizing { get; private set; }
 
         public DesktopHost(Window window)
         {
@@ -71,7 +78,7 @@ namespace Daynote
 
         public bool Attach()
         {
-            if (disposed || IsExpanded) return false;
+            if (disposed || IsExpanded || IsResizing) return false;
             requested = true;
             nextAttempt = DateTime.UtcNow.AddSeconds(10);
             handle = new WindowInteropHelper(window).Handle;
@@ -193,6 +200,7 @@ namespace Daynote
 
         public void Maintain()
         {
+            if (IsResizing) return;
             if (IsExpanded) { MaintainExpanded(); return; }
             if (disposed || !requested || moving) return;
             if (handle != IntPtr.Zero && !IsWindow(handle))
@@ -247,7 +255,7 @@ namespace Daynote
         // monitor rectangles, which includes non-display gaps on mixed layouts.
         public void EnsureVisible()
         {
-            if (disposed) return;
+            if (disposed || IsResizing) return;
             if (IsExpanded) { ApplyExpandedPlacement(); return; }
             if (handle == IntPtr.Zero) handle = new WindowInteropHelper(window).Handle;
             if (handle == IntPtr.Zero || !IsWindow(handle)) return;
@@ -286,7 +294,7 @@ namespace Daynote
 
         public void PlaceOnPrimary(double widthDip, double heightDip, double marginDip)
         {
-            if (disposed || IsExpanded) return;
+            if (disposed || IsExpanded || IsResizing) return;
             if (Double.IsNaN(widthDip) || Double.IsInfinity(widthDip) || widthDip <= 0) throw new ArgumentOutOfRangeException("widthDip");
             if (Double.IsNaN(heightDip) || Double.IsInfinity(heightDip) || heightDip <= 0) throw new ArgumentOutOfRangeException("heightDip");
             requestedWidth = widthDip; requestedHeight = heightDip; requestedMargin = marginDip;
@@ -300,9 +308,89 @@ namespace Daynote
             if (IsExpanded && expandedSnapshot != null) expandedSnapshot.FollowPrimary = false;
         }
 
+        public bool BeginResize(int horizontalEdge, int verticalEdge, Point? physicalOrigin = null)
+        {
+            if (disposed || IsExpanded || IsResizing || (horizontalEdge == 0 && verticalEdge == 0)) return false;
+            if (horizontalEdge < -1 || horizontalEdge > 1 || verticalEdge < -1 || verticalEdge > 1) return false;
+            if (handle == IntPtr.Zero) handle = new WindowInteropHelper(window).Handle;
+            if (handle == IntPtr.Zero || !IsWindow(handle)) return false;
+            CompleteSurfaceRefresh();
+            RECT bounds;
+            POINT cursor;
+            DisplayMonitor monitor = CurrentMonitor();
+            if (monitor == null || !GetWindowRect(handle, out bounds)) return false;
+            if (physicalOrigin.HasValue)
+            {
+                Point origin=physicalOrigin.Value;
+                if (Double.IsNaN(origin.X)||Double.IsInfinity(origin.X)||Double.IsNaN(origin.Y)||Double.IsInfinity(origin.Y)||
+                    origin.X<Int32.MinValue||origin.X>Int32.MaxValue||origin.Y<Int32.MinValue||origin.Y>Int32.MaxValue) return false;
+                // Prefer the press-event location: a queued DragStarted can be
+                // handled after the physical cursor already reached its end.
+                cursor=new POINT((int)Math.Round(origin.X),(int)Math.Round(origin.Y));
+            }
+            else if (!GetCursorPos(out cursor)) return false;
+            resizeMonitor = monitor;
+            resizeOriginalBounds = new PixelRect { Left=bounds.Left, Top=bounds.Top, Right=bounds.Right, Bottom=bounds.Bottom };
+            resizeOrigin = cursor;
+            resizeHorizontalEdge = horizontalEdge; resizeVerticalEdge = verticalEdge;
+            resizeRequestedWidth = requestedWidth; resizeRequestedHeight = requestedHeight;
+            resizePlacement = new DisplayPlacement { Monitor=monitor, Rect=resizeOriginalBounds,
+                WidthDip=resizeOriginalBounds.Width*96.0/Math.Max(1,monitor.DpiX),
+                HeightDip=resizeOriginalBounds.Height*96.0/Math.Max(1,monitor.DpiY) };
+            IsResizing = true;
+            LastError = "";
+            return true;
+        }
+
+        public DisplayPlacement UpdateResize()
+        {
+            if (!IsResizing || disposed || handle == IntPtr.Zero || !IsWindow(handle)) return null;
+            POINT cursor;
+            if (!GetCursorPos(out cursor)) return resizePlacement;
+            var next = DisplayLayout.Resize(resizeMonitor, resizeOriginalBounds, resizeHorizontalEdge, resizeVerticalEdge,
+                cursor.X-resizeOrigin.X, cursor.Y-resizeOrigin.Y, 560, 420, followsPrimary?requestedMargin:0);
+            try { ApplyResizePlacement(next); resizePlacement=next; LastError=""; }
+            catch (Exception error) { LastError="无法调整日历大小："+error.Message; }
+            return resizePlacement;
+        }
+
+        public DisplayPlacement EndResize(bool cancel)
+        {
+            if (!IsResizing) return null;
+            try
+            {
+                if (!cancel) UpdateResize();
+                else
+                {
+                    resizePlacement = new DisplayPlacement { Monitor=resizeMonitor, Rect=resizeOriginalBounds,
+                        WidthDip=resizeOriginalBounds.Width*96.0/Math.Max(1,resizeMonitor.DpiX),
+                        HeightDip=resizeOriginalBounds.Height*96.0/Math.Max(1,resizeMonitor.DpiY) };
+                    ApplyResizePlacement(resizePlacement);
+                }
+                requestedWidth=cancel?resizeRequestedWidth:resizePlacement.WidthDip;
+                requestedHeight=cancel?resizeRequestedHeight:resizePlacement.HeightDip;
+                return resizePlacement;
+            }
+            finally { IsResizing=false;resizeMonitor=null; }
+        }
+
+        private void ApplyResizePlacement(DisplayPlacement placement)
+        {
+            if (disposed || handle == IntPtr.Zero || !IsWindow(handle)) return;
+            moving=true;
+            try
+            {
+                MovePhysical(placement.Rect.Left,placement.Rect.Top);
+                ConfigurePresentation(placement.WidthDip,placement.HeightDip,placement.Monitor.DpiX,placement.Monitor.DpiY);
+                MovePhysical(placement.Rect.Left,placement.Rect.Top);
+                window.InvalidateVisual();
+            }
+            finally { moving=false; }
+        }
+
         public bool EnterExpanded()
         {
-            if (disposed) return false;
+            if (disposed || IsResizing) return false;
             if (IsExpanded) return true;
             if (handle == IntPtr.Zero) handle = new WindowInteropHelper(window).Handle;
             if (handle == IntPtr.Zero || !IsWindow(handle)) { LastError = "日历窗口尚未就绪。"; return false; }
@@ -424,7 +512,7 @@ namespace Daynote
 
         private void ApplyPrimaryPlacement(DisplayPlacement placement = null)
         {
-            if (disposed || IsExpanded || !followsPrimary || placingPrimary) return;
+            if (disposed || IsExpanded || IsResizing || !followsPrimary || placingPrimary) return;
             if (handle == IntPtr.Zero) handle = new WindowInteropHelper(window).Handle;
             if (handle == IntPtr.Zero || !IsWindow(handle)) return;
             placingPrimary = true;
@@ -517,11 +605,11 @@ namespace Daynote
 
         private void QueuePrimaryPlacement()
         {
-            if (placementQueued || disposed || IsExpanded || !followsPrimary) return;
+            if (placementQueued || disposed || IsExpanded || IsResizing || !followsPrimary) return;
             placementQueued = true;
             window.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(delegate {
                 placementQueued = false;
-                if (!disposed && !IsExpanded && followsPrimary) ApplyPrimaryPlacement();
+                if (!disposed && !IsExpanded && !IsResizing && followsPrimary) ApplyPrimaryPlacement();
             }));
         }
 
@@ -538,6 +626,8 @@ namespace Daynote
         public void Dispose()
         {
             if (disposed) return;
+            IsResizing=false;
+            resizeMonitor=null;
             Detach();
             if (surfaceTimer != null)
             {
@@ -617,7 +707,7 @@ namespace Daynote
             // InvalidateVisual alone does not recreate it. One real size change
             // forces a new surface; restore the exact size after a render turn.
             // Verified by own-HWND PrintWindow pixel checks on Windows 11 26200.
-            if (disposed || !window.IsLoaded || handle == IntPtr.Zero || !IsWindow(handle)) return;
+            if (disposed || IsResizing || !window.IsLoaded || handle == IntPtr.Zero || !IsWindow(handle)) return;
             if (surfaceTimer != null)
             {
                 surfaceTimer.Stop();
@@ -727,6 +817,7 @@ namespace Daynote
         [DllImport("user32.dll")] private static extern bool AreDpiAwarenessContextsEqual(IntPtr first, IntPtr second);
         [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetParent(IntPtr child, IntPtr parent);
         [DllImport("user32.dll", SetLastError = true)] private static extern bool GetWindowRect(IntPtr hwnd, out RECT bounds);
+        [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT point);
         [DllImport("user32.dll")] private static extern int MapWindowPoints(IntPtr from, IntPtr to, ref POINT point, uint count);
         [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
         [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)] private static extern int GetWindowLong(IntPtr hwnd, int index);

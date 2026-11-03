@@ -73,4 +73,4 @@ if ($registered -and [string]::Equals([string]$registered.InstallLocation, $inst
     Remove-Item -LiteralPath $uninstallKey -Recurse -Force
 }
 Write-Output '朝夕提醒已卸载。'
-Write-Output ('你的提醒数据仍保存在：' + (Join-Path $env:LOCALAPPDATA 'Daynote\Data'))
+Write-Output ('你的提醒数据仍保存在：' + (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Daynote\Data'))

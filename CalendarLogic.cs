@@ -5,6 +5,52 @@ using System.Linq;
 
 namespace Daynote
 {
+    public static class PanelLayout
+    {
+        // The available height excludes the divider. A zero ratio keeps the
+        // automatic initial height; resizing only clamps the result, never the
+        // saved ratio, so the chosen split returns on a larger screen.
+        public static double DeadlineHeight(double availableHeight, double requestedRatio, double autoHeight, double topMin, double bottomMin)
+        {
+            if (!IsFinite(availableHeight) || availableHeight <= 0) return 0;
+            topMin = IsFinite(topMin) ? Math.Max(0, topMin) : 0;
+            bottomMin = IsFinite(bottomMin) ? Math.Max(0, bottomMin) : 0;
+            if (topMin > availableHeight - bottomMin)
+            {
+                // Neither region can retain its minimum on a tiny work area.
+                // Scale their minima together without an overflowing sum.
+                double scale = Math.Max(topMin, bottomMin);
+                double share = (bottomMin / scale) / (topMin / scale + bottomMin / scale);
+                return availableHeight * share;
+            }
+            bool manual = IsFinite(requestedRatio) && requestedRatio > 0 && requestedRatio <= 1;
+            double desired = manual ? availableHeight * requestedRatio : IsFinite(autoHeight) ? autoHeight : bottomMin;
+            return Math.Max(bottomMin, Math.Min(availableHeight - topMin, desired));
+        }
+
+        private static bool IsFinite(double value) { return !Double.IsNaN(value) && !Double.IsInfinity(value); }
+    }
+
+    public static class DeadlineLogic
+    {
+        // These are persistent to-dos, independent of the selected calendar day.
+        public static List<TaskItem> Items(IEnumerable<TaskItem> tasks, bool includeCompleted)
+        {
+            if (tasks == null) return new List<TaskItem>();
+            return tasks.Where(t => t != null && t.IsDeadline && (includeCompleted || !t.Completed))
+                .OrderBy(t => t.Completed)
+                .ThenBy(t => t.DueAt ?? DateTime.MaxValue)
+                .ThenBy(t => t.Id, StringComparer.Ordinal)
+                .ToList();
+        }
+
+        public static bool IsOverdue(TaskItem task, DateTime now)
+        {
+            return task != null && task.IsDeadline && !task.Completed && task.DueAt.HasValue
+                && (task.HasTime ? task.DueAt.Value < now : task.DueAt.Value.Date < now.Date);
+        }
+    }
+
     public sealed class CalendarSlot
     {
         public TaskItem Task;
@@ -74,7 +120,7 @@ namespace Daynote
             DateTime start = day.Date;
             DateTime finish = NextDay(start);
             if (tasks == null) return new List<TaskItem>();
-            return tasks.Where(t => t != null && t.DueAt.HasValue && (includeCompleted || !t.Completed))
+            return tasks.Where(t => t != null && !t.IsDeadline && t.DueAt.HasValue && (includeCompleted || !t.Completed))
                 .Where(t => !t.HasTime || !End(t).HasValue
                     ? t.DueAt.Value.Date == start
                     : t.DueAt.Value < finish && End(t).Value > start)
