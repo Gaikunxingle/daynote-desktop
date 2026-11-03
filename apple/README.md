@@ -13,7 +13,9 @@
 
 ## 验证边界
 
-本项目已在 GitHub 的 Mac 构建环境执行 **13 项核心测试且全部通过**，iOS 模拟器、iPhone 设备目标（未签名）、原生 macOS 及 arm64/x86_64 通用 Mac 应用均编译通过；Mac 包也通过 ad-hoc 签名检查。[构建记录](https://github.com/Gaikunxingle/daynote-desktop/actions/runs/41650916983) 对应源码提交 `63c7127696dd886e5646eb1da9ea274270bf141e`。
+本项目已在 GitHub 的 Mac 构建环境执行 **13 项核心测试且全部通过**，iOS 模拟器、iPhone 设备目标（未签名）、原生 macOS 及 arm64/x86_64 通用 Mac 应用均编译通过；Mac 包也通过 ad-hoc 签名检查。[构建记录](https://github.com/Gaikunxingle/daynote-desktop/actions/runs/41653772452) 对应源码提交 `b5fbff833b44978b6cbb4e145528b66329cf0ffa`。
+
+修复钥匙串不可用时影响本机编辑的问题后，无签名 fallback 和 Xcode 正常签名版本均已在 iPhone 模拟器启动。[启动记录](https://github.com/Gaikunxingle/daynote-desktop/actions/runs/41655669857) 中截图生成成功，但 GitHub 附件上传服务连续超时，未能取回最终截图复查；因此不将最终界面复查标为通过。这也不等于已验证钥匙串保存后重启读取、Apple 端真实云配对或锁屏通知。
 
 **尚未在你的 iPhone / Mac 真机上安装、验证通知或完成三台真实设备联调。** iPhone 真机仍需你在 Xcode 选择自己的 Personal Team 签名。提供的脚本也可在你的 Mac 上重新测试和构建。
 

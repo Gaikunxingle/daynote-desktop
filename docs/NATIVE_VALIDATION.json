@@ -4,9 +4,12 @@
   "windows": {
     "local_build": "passed",
     "isolated_checks": 212,
+    "preview_startup_isolation_checks": 8,
     "real_http_checks": 15,
     "ui": "light/dark calendar and sync dialog observed with synthetic isolated profile",
-    "ci": "https://github.com/Gaikunxingle/daynote-desktop/actions/runs/41650917010"
+    "source_commit": "f099c01abb3e1db94b57f3a80746a967443776bd",
+    "executable_sha256": "9333cf1749060661b56a5162d1a01b8f5912ba1e8dc6bbb021e22c38e03ed347",
+    "ci": "https://github.com/Gaikunxingle/daynote-desktop/actions/runs/41654951298"
   },
   "cloud": {
     "sql_transaction_checks": "passed including anon privileges, isolation, conflicts, idempotency and rollback",
@@ -22,9 +25,15 @@
     "ios_device_unsigned_build": "passed",
     "macos_native_build": "passed",
     "macos_universal_adhoc_build_and_signature_verification": "passed",
-    "source_commit": "63c7127696dd886e5646eb1da9ea274270bf141e",
-    "ci": "https://github.com/Gaikunxingle/daynote-desktop/actions/runs/41650916983",
-    "mac_archive_sha256": "f0832333c41079104eb150d655dfafb9a95c70c123d502cd5ac027349b82a3f1",
-    "physical_device_installation_and_notifications": "not yet verified"
+    "source_commit": "b5fbff833b44978b6cbb4e145528b66329cf0ffa",
+    "ci": "https://github.com/Gaikunxingle/daynote-desktop/actions/runs/41653772452",
+    "mac_archive_sha256": "db41005e2ab7de3434cc1db96e4ce90f0834a315a8f2ab211cbbb2b4d003b057",
+    "ios_simulator_launch": "unsigned fallback and Xcode-signed builds both launched successfully",
+    "ios_simulator_launch_source_commit": "8fabd4b4bf9f344c91d9c06467d2ec0269fa3ebc",
+    "ios_simulator_launch_ci": "https://github.com/Gaikunxingle/daynote-desktop/actions/runs/41655669857",
+    "ios_simulator_visual_review": "not completed for final build: screenshot creation succeeded, but GitHub artifact upload timed out after 5 attempts; no final screenshots could be retrieved",
+    "physical_device_installation_and_notifications": "not yet verified",
+    "keychain_save_restart_read_and_live_cloud_pairing": "not yet verified on Apple devices",
+    "windows_iphone_mac_physical_roundtrip": "pending installation using user's Personal Team"
   }
 }
