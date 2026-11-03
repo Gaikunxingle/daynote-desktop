@@ -456,7 +456,7 @@ namespace Daynote
             menu.Items.Add(new Separator());
             AddMenu(menu,"固定在主屏右上角",delegate{if(expanded)ToggleExpandedView();controller.Data.Settings.FollowPrimaryTopRight=!controller.Data.Settings.FollowPrimaryTopRight;ApplyPlacement();controller.Save(true);},controller.Data.Settings.FollowPrimaryTopRight);
             AddMenu(menu,"贴在桌面（其他软件在前）",delegate{if(expanded)ToggleExpandedView();controller.Data.Settings.DesktopMode=!controller.Data.Settings.DesktopMode;if(controller.Data.Settings.DesktopMode)host.Attach();else host.Detach();ApplyPlacement();controller.Save(true);},controller.Data.Settings.DesktopMode);
-            AddMenu(menu,"开机启动",delegate{controller.AutoStart=!controller.AutoStart;},controller.AutoStart);
+            if(controller.CanConfigureAutoStart)AddMenu(menu,"开机启动",delegate{controller.AutoStart=!controller.AutoStart;},controller.AutoStart);
             var size=new MenuItem{Header="日历大小"};menu.Items.Add(size);
             foreach(var choice in new[]{new{Name="迷你",W=560.0,H=500.0},new{Name="紧凑（默认）",W=620.0,H=560.0},new{Name="舒展",W=740.0,H=650.0},new{Name="宽大",W=860.0,H=760.0}}) {
                 var c=choice;var item=new MenuItem{Header=c.Name};item.Click+=delegate{if(expanded)ToggleExpandedView();if(host!=null)host.Detach();controller.Data.Settings.Width=c.W;controller.Data.Settings.Height=c.H;Width=c.W;Height=c.H;ClampPlacement();ApplyPlacement();Render();SavePlacement();if(controller.Data.Settings.DesktopMode)host.Attach();ApplyPlacement();};size.Items.Add(item);

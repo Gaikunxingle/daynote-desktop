@@ -276,9 +276,16 @@ namespace Daynote
             if (dialog.ShowDialog() == true) { if (Save(true)) File.Copy(Store.FilePath, dialog.FileName, true); }
         }
         public void OpenData() { Process.Start("explorer.exe", Store.Root); }
+        public bool CanConfigureAutoStart { get { return Program.UsesDefaultDataRoot && !Program.Preview; } }
         public bool AutoStart {
-            get { using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")) return k != null && k.GetValue("Daynote") != null; }
-            set { using (var k = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")) { if (value) k.SetValue("Daynote", "\"" + Program.Executable + "\""); else k.DeleteValue("Daynote", false); } }
+            get {
+                if(!CanConfigureAutoStart)return false;
+                using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")) return k != null && k.GetValue("Daynote") != null;
+            }
+            set {
+                if(!CanConfigureAutoStart)throw new InvalidOperationException("独立资料与演示模式不会更改正式版的开机启动。");
+                using (var k = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")) { if (value) k.SetValue("Daynote", "\"" + Program.Executable + "\""); else k.DeleteValue("Daynote", false); }
+            }
         }
         public void TestReminder() { Notify(new TaskItem { Title = "提醒已准备好", Notes = "这是测试提醒。真实事项会按你设置的时间弹出。", DueAt = DateTime.Now, HasTime = true }); }
         void Notify(TaskItem task)
