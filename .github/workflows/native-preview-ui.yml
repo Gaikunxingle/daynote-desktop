@@ -30,12 +30,28 @@ jobs:
           xcrun simctl launch "$device_id" app.youmu.daynote.native
           sleep 8
           mkdir -p preview
+          xcrun simctl io "$device_id" screenshot preview/iPhone-native-unsigned-fallback.png
+          xcrun simctl terminate "$device_id" app.youmu.daynote.native
+          # Simulator-only identity: real devices still use Xcode Personal Team provisioning.
+          cat > /tmp/daynote-simulator.entitlements <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>application-identifier</key><string>DAYNOTETST.app.youmu.daynote.native</string>
+          <key>keychain-access-groups</key><array><string>DAYNOTETST.app.youmu.daynote.native</string></array>
+          </dict></plist>
+          PLIST
+          codesign --force --sign - --entitlements /tmp/daynote-simulator.entitlements 'build/Visual/Build/Products/Debug-iphonesimulator/朝夕日历.app'
+          xcrun simctl uninstall "$device_id" app.youmu.daynote.native
+          xcrun simctl install "$device_id" 'build/Visual/Build/Products/Debug-iphonesimulator/朝夕日历.app'
+          xcrun simctl launch "$device_id" app.youmu.daynote.native
+          sleep 8
           xcrun simctl io "$device_id" screenshot preview/iPhone-native.png
           xcrun simctl terminate "$device_id" app.youmu.daynote.native
           xcrun simctl shutdown "$device_id"
       - uses: actions/upload-artifact@v4
         with:
           name: Daynote-iPhone-Native-Preview
-          path: apple/preview/iPhone-native.png
+          path: apple/preview/*.png
           retention-days: 7
           if-no-files-found: error

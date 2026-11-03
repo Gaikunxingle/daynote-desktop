@@ -106,9 +106,21 @@ final class NoticeDelegate: NSObject, UNUserNotificationCenterDelegate {
                     }
                 }
             }
-            key = try SyncKeychain.read(); connected = key != nil
-            status = connected ? "等待同步" : "本机日历"
         } catch { canWrite = false; errorMessage = error.localizedDescription }
+        // Credential availability is independent of local-data integrity. A locked or
+        // unavailable Keychain must not disable offline editing on either platform.
+        if canWrite {
+            do {
+                key = try SyncKeychain.read(); connected = key != nil
+                status = connected ? "等待同步" : "本机日历"
+            } catch {
+                key = nil; connected = false
+                status = "暂时无法读取同步凭据，可先本机编辑；解锁设备后重新连接。"
+            }
+        } else {
+            key = nil; connected = false
+            status = "本机资料已保护，暂停写入与同步"
+        }
         UNUserNotificationCenter.current().delegate = noticeDelegate
     }
 
