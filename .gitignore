@@ -39,3 +39,10 @@ capture-error.txt
 .env
 .env.*
 !.env.example
+
+# Private preview device keys and local test credentials
+/.private/
+/deliverables/
+/apple/.build/
+/apple/build/
+**/xcuserdata/

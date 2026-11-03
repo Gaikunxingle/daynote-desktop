@@ -16,12 +16,13 @@ if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
 }
 
 $suites = @(
-    @{ Name = 'CoreTests'; Sources = @('Core.cs', 'CoreTests.cs') },
-    @{ Name = 'CalendarLogicTests'; Sources = @('Core.cs', 'CalendarLogic.cs', 'CalendarLogicTests.cs') },
+    @{ Name = 'CoreTests'; Sources = @('Core.cs', 'SyncCore.cs', 'CoreTests.cs') },
+    @{ Name = 'CalendarLogicTests'; Sources = @('Core.cs', 'SyncCore.cs', 'CalendarLogic.cs', 'CalendarLogicTests.cs') },
     @{ Name = 'ResizeGeometryTests'; Sources = @('DisplayLayout.cs', 'ResizeGeometryTests.cs') },
-    @{ Name = 'DataPathsTests'; Sources = @('Core.cs', 'DataPaths.cs', 'DataPathsTests.cs') }
+    @{ Name = 'DataPathsTests'; Sources = @('Core.cs', 'SyncCore.cs', 'DataPaths.cs', 'DataPathsTests.cs') },
+    @{ Name = 'SyncTests'; Sources = @('Core.cs', 'SyncCore.cs', 'SyncClient.cs', 'SyncTests.cs') }
 )
-$references = @('System.dll', 'System.Core.dll', 'System.Runtime.Serialization.dll', 'System.Xml.dll') |
+$references = @('System.dll', 'System.Core.dll', 'System.Runtime.Serialization.dll', 'System.Xml.dll', 'System.Security.dll') |
     ForEach-Object { '/r:' + (Join-Path $framework $_) }
 foreach ($suite in $suites) {
     foreach ($file in $suite.Sources) {

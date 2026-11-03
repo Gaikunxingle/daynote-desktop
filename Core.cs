@@ -91,6 +91,7 @@ namespace Daynote
         [DataMember(Order = 0, IsRequired = true)] public int Version = 2;
         [DataMember(Order = 1, IsRequired = true)] public List<TaskItem> Tasks = new List<TaskItem>();
         [DataMember(Order = 2, IsRequired = true)] public AppSettings Settings = new AppSettings();
+        [DataMember(Order = 3, EmitDefaultValue = false)] public SyncState Sync;
     }
 
     public sealed class DataStore
@@ -232,8 +233,10 @@ namespace Daynote
 
         private static void Validate(AppData data)
         {
-            if (data == null || (data.Version != 1 && data.Version != 2) || data.Tasks == null || data.Settings == null)
+            if (data == null || (data.Version != 1 && data.Version != 2 && data.Version != 3) || data.Tasks == null || data.Settings == null)
                 throw new SerializationException("数据结构或版本不受支持。");
+            if ((data.Version == 3) != (data.Sync != null)) throw new SerializationException("同步资料版本不一致。");
+            SyncEngine.ValidateState(data.Sync);
             HashSet<string> ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (TaskItem item in data.Tasks)
             {
@@ -243,7 +246,7 @@ namespace Daynote
                 item.Notes = item.Notes ?? "";
                 if (item.ReminderMinutes < -1 || item.ReminderMinutes > 525600)
                     throw new SerializationException("提醒时间超出支持范围。");
-                if (item.ColorId != "blue" && item.ColorId != "purple" && item.ColorId != "green" && item.ColorId != "orange" && item.ColorId != "teal" && item.ColorId != "red")
+                if (item.ColorId != "blue" && item.ColorId != "purple" && item.ColorId != "green" && item.ColorId != "orange" && item.ColorId != "teal" && item.ColorId != "red" && item.ColorId != "pink" && item.ColorId != "gray")
                     item.ColorId = "blue";
             }
             AppSettings settings = data.Settings;

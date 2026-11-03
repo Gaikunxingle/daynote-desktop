@@ -3,7 +3,7 @@ $base = $PSScriptRoot
 $out = Join-Path $base 'build'
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 $framework = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
-$refs = @('System.dll','System.Core.dll','System.Runtime.Serialization.dll','System.Xml.dll','System.Drawing.dll','System.Windows.Forms.dll','System.Xaml.dll') | ForEach-Object { '/r:' + (Join-Path $framework $_) }
+$refs = @('System.dll','System.Core.dll','System.Runtime.Serialization.dll','System.Xml.dll','System.Drawing.dll','System.Windows.Forms.dll','System.Xaml.dll','System.Security.dll') | ForEach-Object { '/r:' + (Join-Path $framework $_) }
 $refs += '/r:' + (Join-Path $framework 'WPF\WindowsBase.dll')
 $refs += '/r:' + (Join-Path $framework 'WPF\PresentationCore.dll')
 $refs += '/r:' + (Join-Path $framework 'WPF\PresentationFramework.dll')
@@ -22,7 +22,7 @@ $iconPath = Join-Path $out 'Daynote.ico'
 $stream = [System.IO.File]::Create($iconPath)
 $icon.Save($stream)
 $stream.Dispose(); $icon.Dispose(); $red.Dispose(); $ink.Dispose(); $font.Dispose(); $g.Dispose(); $bitmap.Dispose()
-$sources = @('App.cs','Core.cs','DataPaths.cs','CalendarLogic.cs','CalendarWindow.cs','DayView.cs','TaskEditor.cs','DesktopHost.cs','DisplayLayout.cs') | ForEach-Object { Join-Path $base $_ }
+$sources = @('App.cs','Core.cs','DataPaths.cs','CalendarLogic.cs','CalendarWindow.cs','DayView.cs','TaskEditor.cs','DesktopHost.cs','DisplayLayout.cs','SyncCore.cs','SyncClient.cs','SyncController.cs','SyncSettingsWindow.cs') | ForEach-Object { Join-Path $base $_ }
 & (Join-Path $framework 'csc.exe') /nologo /target:winexe /platform:x64 /optimize+ /utf8output "/out:$out\Daynote.exe" "/win32icon:$iconPath" "/win32manifest:$base\app.manifest" @refs @sources
 if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 @'

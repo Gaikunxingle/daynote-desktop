@@ -3,5 +3,11 @@
 *.ps1 text eol=crlf
 *.md text eol=lf
 *.yml text eol=lf
+*.swift text eol=lf
+*.sh text eol=lf
+*.command text eol=lf
+*.pbxproj text eol=lf
+*.xcscheme text eol=lf
+*.sql text eol=lf
 *.png binary
 *.ico binary

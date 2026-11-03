@@ -36,7 +36,7 @@ namespace Daynote
         private readonly Brush inputBrush;
         private readonly Brush lineBrush;
         private readonly int[] reminderValues = { -1, 0, 5, 15, 30, 60, 1440 };
-        private readonly string[] colorIds = { "blue", "purple", "green", "orange", "teal", "red" };
+        private readonly string[] colorIds = { "blue", "purple", "green", "orange", "teal", "red", "pink", "gray" };
         private bool dateParseFailed;
         private bool endDateParseFailed;
 
@@ -272,8 +272,8 @@ namespace Daynote
             var colorGroup = new StackPanel();
             colorGroup.Children.Add(Label("事项颜色"));
             colorBox = new ComboBox { Height = 36, FontSize = 13, Padding = new Thickness(8, 4, 8, 4), Foreground = Brushes.Black };
-            string[] colorNames = { "蓝色", "紫色", "绿色", "橙色", "青色", "红色" };
-            string[] colorHexes = { "#007AFF", "#AF52DE", "#34C759", "#FF9500", "#30B0C7", "#FF3B30" };
+            string[] colorNames = { "蓝色", "紫色", "绿色", "橙色", "青色", "红色", "粉色", "灰色" };
+            string[] colorHexes = { "#007AFF", "#AF52DE", "#34C759", "#FF9500", "#30B0C7", "#FF3B30", "#D85D9B", "#77808F" };
             for (int i = 0; i < colorIds.Length; i++)
             {
                 var line = new StackPanel { Orientation = Orientation.Horizontal };

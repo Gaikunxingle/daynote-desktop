@@ -25,6 +25,8 @@ namespace Daynote
                 case "orange": value = dark ? "#FFC282" : "#AE6714"; break;
                 case "teal": value = dark ? "#7ED9D6" : "#15827F"; break;
                 case "red": value = dark ? "#FF9A9F" : "#CC4854"; break;
+                case "pink": value = dark ? "#F9A9D0" : "#BA477F"; break;
+                case "gray": value = dark ? "#C8CDD5" : "#596373"; break;
                 default: value = dark ? "#89BBFF" : "#286CC7"; break;
             }
             return FrozenBrush(value);
@@ -40,6 +42,8 @@ namespace Daynote
                 case "orange": value = dark ? "#453423" : "#FFF0DC"; break;
                 case "teal": value = dark ? "#1F3D3C" : "#E0F3F1"; break;
                 case "red": value = dark ? "#472A30" : "#FCE7E9"; break;
+                case "pink": value = dark ? "#482D40" : "#FBE6F1"; break;
+                case "gray": value = dark ? "#343942" : "#EAECEF"; break;
                 default: value = dark ? "#263A54" : "#E5EFFD"; break;
             }
             return FrozenBrush(value);

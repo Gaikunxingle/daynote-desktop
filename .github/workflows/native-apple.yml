@@ -1,0 +1,43 @@
+name: Native Apple preview
+
+on:
+  push:
+    branches: [feature/native-sync-preview]
+    paths: ['apple/**', '.github/workflows/native-apple.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-apple:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core tests and simulator/macOS compilation
+        run: bash apple/scripts/verify-apple.sh
+      - name: Compile iPhone device target without signing
+        working-directory: apple
+        run: >-
+          xcodebuild -project Daynote.xcodeproj -scheme Daynote -configuration Release
+          -destination 'generic/platform=iOS' -derivedDataPath build/iPhone
+          CODE_SIGNING_ALLOWED=NO build
+      - name: Build universal Mac preview with ad-hoc signing
+        working-directory: apple
+        run: |
+          xcodebuild -project Daynote.xcodeproj -scheme Daynote -configuration Release \
+            -destination 'generic/platform=macOS' -derivedDataPath build/MacUniversal \
+            ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
+          codesign --verify --deep --strict 'build/MacUniversal/Build/Products/Release/朝夕日历.app'
+          ditto -c -k --sequesterRsrc --keepParent 'build/MacUniversal/Build/Products/Release/朝夕日历.app' Daynote-Mac-Preview.zip
+          shasum -a 256 Daynote-Mac-Preview.zip > Daynote-Mac-Preview.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Daynote-Mac-Preview
+          path: |
+            apple/Daynote-Mac-Preview.zip
+            apple/Daynote-Mac-Preview.sha256
+          retention-days: 7
+          if-no-files-found: error

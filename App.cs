@@ -18,8 +18,8 @@ using Forms = System.Windows.Forms;
 
 [assembly: AssemblyTitle("朝夕日历")]
 [assembly: AssemblyProduct("朝夕提醒")]
-[assembly: AssemblyVersion("2.4.1.0")]
-[assembly: AssemblyFileVersion("2.4.1.0")]
+[assembly: AssemblyVersion("2.5.0.0")]
+[assembly: AssemblyFileVersion("2.5.0.0")]
 
 namespace Daynote
 {
@@ -81,7 +81,7 @@ namespace Daynote
         static void Signal(string name) { try { using (var signal = EventWaitHandle.OpenExisting(name)) signal.Set(); } catch (WaitHandleCannotBeOpenedException) { } }
     }
 
-    public sealed class AppController
+    public sealed partial class AppController
     {
         readonly Application app;
         public readonly DataStore Store;
@@ -112,6 +112,7 @@ namespace Daynote
             if (Program.UsesDefaultDataRoot) DataPaths.MigrateLegacyData(Program.DataRoot);
             Store = new DataStore(Program.DataRoot);
             Data = Store.Load();
+            InitializeSync();
         }
         public void Start()
         {
@@ -136,6 +137,7 @@ namespace Daynote
             var menu = new Forms.ContextMenuStrip();
             menu.Items.Add("显示日历", null, delegate { app.Dispatcher.Invoke(new Action(ShowPanel)); });
             menu.Items.Add("添加提醒", null, delegate { app.Dispatcher.Invoke(new Action(delegate { Edit(null); })); });
+            menu.Items.Add("账号与同步…", null, delegate { app.Dispatcher.Invoke(new Action(ShowSyncSettings)); });
             menu.Items.Add(new Forms.ToolStripSeparator());
             menu.Items.Add("退出", null, delegate { app.Dispatcher.Invoke(new Action(Exit)); });
             tray.ContextMenuStrip = menu;
@@ -152,6 +154,7 @@ namespace Daynote
             timer.Tick += Tick;
             timer.Start();
             if (!String.IsNullOrEmpty(Store.LoadWarning)) MessageBox.Show(Store.LoadWarning, "数据恢复提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            RequestSync();
         }
         void CreateWindow(CalendarViewState state = null)
         {
@@ -194,6 +197,7 @@ namespace Daynote
         void Tick(object sender, EventArgs e)
         {
             if (exiting) return;
+            SyncTick();
             string currentSignature=DisplayLayout.Signature();
             if(currentSignature!=displaySignature)ScheduleDisplayRefresh();
             if(window==null)return;
@@ -215,8 +219,10 @@ namespace Daynote
         }
         public bool Save(bool report)
         {
-            try { Store.Save(Data); return true; }
+            var oldPending=Data.Sync==null?null:Data.Sync.Pending;
+            try { SyncEngine.Prepare(Data); Store.Save(Data); ScheduleSyncAfterSave(); return true; }
             catch (Exception ex) {
+                if(Data.Sync!=null)Data.Sync.Pending=oldPending;
                 if (report) MessageBox.Show("保存失败，本次更改尚未写入磁盘。\n" + ex.Message, "提醒事项", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return false;
             }
@@ -224,6 +230,10 @@ namespace Daynote
         public void Edit(TaskItem task, DateTime? initialDate = null, bool initialIsDeadline = false)
         {
             if (editing) return;
+            if(task!=null) {
+                string id=task.Id;task=Data.Tasks.FirstOrDefault(t=>t.Id==id);
+                if(task==null) { if(window!=null)window.Render();return; }
+            }
             editing = true;
             try {
                 var editor = new TaskEditor(task, Dark, initialDate ?? (window == null ? DateTime.Today : window.SelectedDate), initialIsDeadline);
@@ -240,18 +250,26 @@ namespace Daynote
         }
         public void Toggle(TaskItem task)
         {
+            string id=task.Id;task=Data.Tasks.FirstOrDefault(t=>t.Id==id);
+            if(task==null) { if(window!=null)window.Render();return; }
             task.Completed = !task.Completed;
             if (!Save(true)) task.Completed = !task.Completed;
             window.Render();
         }
         public void Delete(TaskItem task)
         {
-            if (MessageBox.Show("删除“" + task.Title + "”？", "删除提醒", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-            int index = Data.Tasks.IndexOf(task); Data.Tasks.Remove(task);
-            if (!Save(true)) Data.Tasks.Insert(index, task);
-            window.Render();
+            if(editing)return;
+            string id=task.Id;task=Data.Tasks.FirstOrDefault(t=>t.Id==id);
+            if(task==null) { if(window!=null)window.Render();return; }
+            editing=true;
+            try {
+                if (MessageBox.Show("删除“" + task.Title + "”？", "删除提醒", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                int index = Data.Tasks.IndexOf(task); if(index<0)return;Data.Tasks.Remove(task);
+                if (!Save(true)) Data.Tasks.Insert(index, task);
+                window.Render();
+            } finally { editing=false; }
         }
-        public void ShowPanel() { if(window==null)CreateWindow(lastViewState);if(window!=null)window.Reveal(); }
+        public void ShowPanel() { if(window==null)CreateWindow(lastViewState);if(window!=null)window.Reveal();RequestSync(); }
         public void Export()
         {
             var dialog = new SaveFileDialog { Title = "导出提醒事项备份", Filter = "提醒事项备份 (*.json)|*.json", FileName = "朝夕备份_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".json" };
@@ -292,6 +310,7 @@ namespace Daynote
             if (exiting) return;
             if (window != null) window.SavePlacement();
             exiting = true;
+            StopSync();
             if (timer != null) timer.Stop();
             if (displayRefreshTimer != null) displayRefreshTimer.Stop();
             SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
