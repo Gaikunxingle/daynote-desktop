@@ -53,6 +53,12 @@ public struct TaskData: Codable, Equatable {
     }
     public var dueDate: Date? { DaynoteDates.decode(dueAt, hasTime: hasTime) }
     public var endDate: Date? { DaynoteDates.decode(endAt, hasTime: hasTime) }
+    public func reminderFireDate() -> Date? {
+        guard !completed, reminderMinutes >= 0, let due = dueDate else { return nil }
+        // Match the Windows ReminderEngine: all-day reminders are anchored at local 09:00.
+        let effectiveDue = hasTime ? due : Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: due)
+        return effectiveDue?.addingTimeInterval(-Double(reminderMinutes) * 60)
+    }
 }
 
 public enum DaynoteDates {

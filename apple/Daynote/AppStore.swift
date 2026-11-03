@@ -258,8 +258,7 @@ final class NoticeDelegate: NSObject, UNUserNotificationCenterDelegate {
             guard permission.authorizationStatus == .authorized || permission.authorizationStatus == .provisional else { return }
             let now = Date()
             let upcoming = snapshot.compactMap { r -> (LocalRecord, Date)? in
-                guard !r.data.completed, r.data.reminderMinutes >= 0, let due = r.data.dueDate else { return nil }
-                let fire = due.addingTimeInterval(-Double(r.data.reminderMinutes) * 60)
+                guard let fire = r.data.reminderFireDate() else { return nil }
                 return fire > now ? (r, fire) : nil
             }.sorted { $0.1 < $1.1 }.prefix(60)
             center.removeAllPendingNotificationRequests()

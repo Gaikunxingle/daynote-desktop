@@ -57,7 +57,7 @@ import SwiftUI
                             }
                         }
                         if !data.hasTime, data.reminderMinutes >= 0 {
-                            Text("全天事项以当天 00:00 计算提醒时间。").font(.caption).foregroundStyle(.secondary)
+                            Text("全天事项以当天 09:00 计算提醒时间。").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }

@@ -16,6 +16,19 @@ final class SyncTests: XCTestCase {
         XCTAssertEqual(DaynoteDates.encode(date, hasTime: false), "2026-11-03")
         XCTAssertNotNil(DaynoteDates.decode("2026-11-03T14:30:00+08:00", hasTime: true))
     }
+    func testAllDayReminderMatchesWindowsNineAMAnchor() throws {
+        var d = task("全天事项")
+        d.dueAt = "2026-11-03"; d.hasTime = false; d.reminderMinutes = 0
+        let sameDay = try XCTUnwrap(d.reminderFireDate())
+        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: sameDay)
+        XCTAssertEqual(components.year, 2026); XCTAssertEqual(components.month, 11); XCTAssertEqual(components.day, 3)
+        XCTAssertEqual(components.hour, 9); XCTAssertEqual(components.minute, 0)
+        d.reminderMinutes = 30
+        let early = try XCTUnwrap(d.reminderFireDate())
+        XCTAssertEqual(Calendar.current.component(.hour, from: early), 8)
+        XCTAssertEqual(Calendar.current.component(.minute, from: early), 30)
+        d.completed = true; XCTAssertNil(d.reminderFireDate())
+    }
     func testNetworkRetryKeepsImmutableMutation() throws {
         var s = bound(); _ = s.edit(id: nil, data: task("第一次"))
         let first = try XCTUnwrap(s.prepareBatch().first)
