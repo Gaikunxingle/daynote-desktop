@@ -17,6 +17,8 @@ import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -73,10 +75,13 @@ public final class UiSmokeTest {
             resizeDisplay(1080,2400);
             activity=instrumentation.startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             idle();awaitText("朝夕日历");screenshot("01-compact-360dp.png");
-            assertLayout(false);report.append("PASS compact native calendar, 360 dp\n");
+            assertLayout(false);assertCalendarColumnsVisible();report.append("PASS compact native calendar, all seven columns visible at 360 dp\n");
 
-            resizeDisplay(2280,1980);idle();awaitText("朝夕日历");assertLayout(true);
-            screenshot("02-expanded-760dp.png");report.append("PASS expanded two-pane native calendar, 760 dp\n");
+            resizeDisplay(1800,2400);idle();awaitText("朝夕日历");assertLayout(true);assertCalendarColumnsVisible();
+            screenshot("02a-expanded-threshold-600dp.png");report.append("PASS two-pane threshold, all seven calendar columns visible at 600 dp\n");
+
+            resizeDisplay(2280,1980);idle();awaitText("朝夕日历");assertLayout(true);assertCalendarColumnsVisible();
+            screenshot("02-expanded-760dp.png");report.append("PASS expanded two-pane native calendar, all seven columns visible at 760 dp\n");
             clickText("设备");awaitText("个人同步码");screenshot("03-sync-settings.png");clickText("完成");
 
             resizeDisplay(1080,2400);idle();
@@ -117,7 +122,7 @@ public final class UiSmokeTest {
     }
     private void resizeDisplay(int width,int height) throws Exception {
         assertEquals("Display changes are limited to the emulator","1",shell("getprop ro.kernel.qemu").trim());
-        assertTrue("Unexpected emulator size",(width==1080&&height==2400)||(width==2280&&height==1980));
+        assertTrue("Unexpected emulator size",(width==1080&&height==2400)||(width==1800&&height==2400)||(width==2280&&height==1980));
         shell("wm size "+width+"x"+height);shell("wm density 480");SystemClock.sleep(900);idle();
     }
     private void assertLayout(boolean expanded) throws Exception {
@@ -128,6 +133,39 @@ public final class UiSmokeTest {
             assertTrue("Expanded agenda should sit beside the calendar",Math.abs(left.centerY()-right.centerY())<180);
             assertTrue("Expanded agenda should use the right pane",right.left>left.right);
         } else assertTrue("Compact agenda should sit below the calendar",right.top>left.bottom+200);
+    }
+    private void assertCalendarColumnsVisible() {
+        main(()->{
+            ViewGroup headings=findWeekdayRow(activity.findViewById(android.R.id.content));
+            assertNotNull("The calendar must have seven weekday headings",headings);
+            ViewGroup grid=(ViewGroup)headings.getParent();
+            ViewGroup firstWeek=(ViewGroup)grid.getChildAt(1);
+            assertEquals("The first week must contain all seven date cells",7,firstWeek.getChildCount());
+            float density=activity.getResources().getDisplayMetrics().density;
+            for(int column=0;column<7;column++) {
+                assertHorizontallyVisible(headings.getChildAt(column),"Weekday column "+column);
+                View date=firstWeek.getChildAt(column);
+                assertHorizontallyVisible(date,"Date column "+column);
+                assertTrue("Date targets must be at least 44 dp wide",date.getWidth()+1>=44*density);
+            }
+        });
+    }
+    private ViewGroup findWeekdayRow(View view) {
+        if(!(view instanceof ViewGroup group))return null;
+        String[] weekdays={"一","二","三","四","五","六","日"};
+        if(group.getChildCount()==7) {
+            boolean matches=true;
+            for(int i=0;i<7;i++)if(!(group.getChildAt(i) instanceof TextView label)||!weekdays[i].contentEquals(label.getText())){matches=false;break;}
+            if(matches)return group;
+        }
+        for(int i=0;i<group.getChildCount();i++){ViewGroup found=findWeekdayRow(group.getChildAt(i));if(found!=null)return found;}
+        return null;
+    }
+    private void assertHorizontallyVisible(View view,String label) {
+        int[] position=new int[2];view.getLocationOnScreen(position);Rect visible=new Rect();
+        assertTrue(label+" is off-screen",view.getGlobalVisibleRect(visible));
+        assertTrue(label+" is clipped on the left",visible.left<=position[0]+1);
+        assertTrue(label+" is clipped on the right",visible.right>=position[0]+view.getWidth()-1);
     }
     private void setEditable(String hint,String value) throws Exception {
         AccessibilityNodeInfo node=await(n->n.isEditable()&&n.getHintText()!=null&&n.getHintText().toString().contains(hint));

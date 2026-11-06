@@ -188,11 +188,12 @@ public final class MainActivity extends Activity implements CalendarStore.Listen
             stack.addView(rightScroll,new LinearLayout.LayoutParams(-1,0,1));host.addView(stack,new FrameLayout.LayoutParams(-1,-1));
         } else if(dual) {
             LinearLayout panes=ui.row();panes.setGravity(Gravity.TOP);panes.setPadding(ui.dp(16),ui.dp(8),ui.dp(16),0);
-            int contentWidth=width-ui.dp(32);int gap=ui.dp(24);int left=Math.max(ui.dp(320),(int)(contentWidth*.44));
+            // Seven 48 dp dates plus the calendar's side padding must fit without horizontal scrolling.
+            int contentWidth=width-ui.dp(32);int gap=ui.dp(24);int left=Math.max(ui.dp(348),(int)(contentWidth*.44));
             if(fold!=null && verticalFold && fold.centerX()>ui.dp(180) && fold.centerX()<width-ui.dp(180)) {
                 left=fold.left-ui.dp(24);gap=Math.max(ui.dp(24),fold.width()+ui.dp(16));
             }
-            left=Math.min(left,contentWidth-ui.dp(216)-gap);
+            left=Math.min(left,contentWidth-ui.dp(196)-gap);
             leftScroll=scroll(calendarPanel(records));rightScroll=scroll(agendaPanel(records));
             panes.addView(leftScroll,new LinearLayout.LayoutParams(left,-1));
             View gutter=new View(this);panes.addView(gutter,new LinearLayout.LayoutParams(gap,-1));
@@ -217,9 +218,9 @@ public final class MainActivity extends Activity implements CalendarStore.Listen
         Button back=ui.button("‹",false,()->{month=month.minusMonths(1);queueRender();});back.setTextSize(28);back.setContentDescription("上个月");back.setPadding(0,0,0,0);
         Button next=ui.button("›",false,()->{month=month.plusMonths(1);queueRender();});next.setTextSize(28);next.setContentDescription("下个月");next.setPadding(0,0,0,0);
         bar.addView(back,new LinearLayout.LayoutParams(ui.dp(48),ui.dp(48)));bar.addView(next,new LinearLayout.LayoutParams(ui.dp(48),ui.dp(48)));panel.addView(bar);
-        // A short horizontal overflow on exceptionally narrow windows keeps every day a 48 dp target.
+        // Narrow cover screens allow 44 dp cells; only exceptionally narrow windows need horizontal scrolling.
         HorizontalScrollView daysScroll=new HorizontalScrollView(this);daysScroll.setHorizontalScrollBarEnabled(false);daysScroll.setFillViewport(true);
-        LinearLayout grid=ui.column();grid.setMinimumWidth(ui.dp(336));
+        LinearLayout grid=ui.column();grid.setMinimumWidth(ui.dp(308));
         LinearLayout weekdays=ui.row();String[] days={"一","二","三","四","五","六","日"};
         for(int i=0;i<7;i++){TextView d=ui.text(days[i],11,i>=5?ui.accent:ui.muted,false);d.setGravity(Gravity.CENTER);weekdays.addView(d,new LinearLayout.LayoutParams(0,ui.dp(32),1));}
         grid.addView(weekdays);
@@ -229,7 +230,7 @@ public final class MainActivity extends Activity implements CalendarStore.Listen
             LinearLayout week=ui.row();
             for(int c=0;c<7;c++){
                 LocalDate date=gridStart.plusDays(r*7L+c);boolean selected=date.equals(selectedDate);boolean inside=YearMonth.from(date).equals(month);
-                LinearLayout cell=ui.column();cell.setGravity(Gravity.CENTER);cell.setMinimumWidth(ui.dp(48));cell.setMinimumHeight(ui.dp(52));
+                LinearLayout cell=ui.column();cell.setGravity(Gravity.CENTER);cell.setMinimumWidth(ui.dp(44));cell.setMinimumHeight(ui.dp(52));
                 cell.setBackground(ui.ripple(selected?ui.accent:Color.TRANSPARENT,13));
                 TextView number=ui.text(Integer.toString(date.getDayOfMonth()),16,selected?(ui.dark?Color.BLACK:Color.WHITE):inside?ui.ink:ui.muted,date.equals(LocalDate.now()));
                 number.setGravity(Gravity.CENTER);
