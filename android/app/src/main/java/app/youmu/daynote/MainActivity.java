@@ -383,16 +383,36 @@ public final class MainActivity extends Activity implements CalendarStore.Listen
             applyAppearance(DisplayPreferences.setTheme(this,value));
         });
         page.addView(modes);page.addView(ui.space(8));
-        Button font=ui.button("字体大小 · "+DisplayPreferences.FONT_LABELS[DisplayPreferences.fontIndex(this)],false,()-> {
-            new AlertDialog.Builder(this).setTitle("字体大小")
+        Button font=ui.button("应用内字号 · "+DisplayPreferences.FONT_LABELS[DisplayPreferences.fontIndex(this)],false,()-> {
+            new AlertDialog.Builder(this).setTitle("应用内字号")
                     .setSingleChoiceItems(DisplayPreferences.FONT_LABELS,DisplayPreferences.fontIndex(this),(dialog,which)-> {
                         dialog.dismiss();float scale=DisplayPreferences.FONT_SCALES[which];
                         if(scale!=DisplayPreferences.fontScale(this))applyAppearance(DisplayPreferences.setFontScale(this,scale));
                     }).setNegativeButton("取消",null).show();
-        });font.setContentDescription("字体大小");page.addView(font,new LinearLayout.LayoutParams(-1,-2));
-        TextView preview=ui.text("字体预览：把每一天安排得从容一些。",16,ui.ink,false);
+        });font.setContentDescription("应用内字号");page.addView(font,new LinearLayout.LayoutParams(-1,-2));
+        TextView preview=ui.text("应用内预览：把每一天安排得从容一些。",16,ui.ink,false);
         preview.setPadding(0,ui.dp(12),0,ui.dp(6));page.addView(preview);
-        page.addView(ui.text("同时用于日历、编辑窗口和桌面小组件。仅影响这台手机。",12,ui.muted,false));page.addView(ui.space(22));
+        page.addView(ui.text("用于日历和编辑窗口，不影响桌面小组件。",12,ui.muted,false));page.addView(ui.space(16));
+        FrameLayout widgetPreview=new FrameLayout(this);
+        Button widgetFont=ui.button("小组件字号 · "+DisplayPreferences.WIDGET_FONT_LABELS[DisplayPreferences.widgetFontIndex(this)],false,()->{});
+        widgetFont.setContentDescription("小组件字号");
+        widgetFont.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("小组件字号")
+                .setSingleChoiceItems(DisplayPreferences.WIDGET_FONT_LABELS,DisplayPreferences.widgetFontIndex(this),(dialog,which)-> {
+                    dialog.dismiss();float scale=DisplayPreferences.WIDGET_FONT_SCALES[which];
+                    if(scale==DisplayPreferences.widgetFontScale(this))return;
+                    if(!DisplayPreferences.setWidgetFontScale(this,scale)) {
+                        Toast.makeText(this,"设置暂时未保存，请重试",Toast.LENGTH_SHORT).show();return;
+                    }
+                    AgendaWidgetProvider.refreshAll(this);
+                    widgetFont.setText("小组件字号 · "+DisplayPreferences.WIDGET_FONT_LABELS[DisplayPreferences.widgetFontIndex(this)]);
+                    widgetPreview.removeAllViews();
+                    widgetPreview.addView(AgendaWidgetProvider.preview(this,widgetPreview));
+                }).setNegativeButton("取消",null).show());
+        page.addView(widgetFont,new LinearLayout.LayoutParams(-1,-2));page.addView(ui.space(10));
+        TextView widgetHint=ui.text("小组件预览 · 示例内容",12,ui.muted,false);page.addView(widgetHint);page.addView(ui.space(8));
+        widgetPreview.addView(AgendaWidgetProvider.preview(this,widgetPreview));
+        page.addView(widgetPreview,new LinearLayout.LayoutParams(-1,-2));page.addView(ui.space(8));
+        page.addView(ui.text("只调整桌面小组件。字号越大，同样大小的卡片显示的事项越少；可长按小组件拉大。两项字号均只影响这台手机。",12,ui.muted,false));page.addView(ui.space(22));
         page.addView(ui.text("设备同步",15,ui.ink,true));page.addView(ui.space(8));
         settingsStatus=ui.text(accountSummary(),14,ui.muted,false);settingsStatus.setLineSpacing(ui.dp(6),1);page.addView(settingsStatus);page.addView(ui.space(18));
         TextView keyLabel=ui.text("个人同步码",13,ui.ink,true);page.addView(keyLabel);page.addView(ui.space(6));

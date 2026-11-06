@@ -5,6 +5,8 @@ import android.app.Application;
 import android.app.Instrumentation;
 import android.app.UiAutomation;
 import android.content.Context;
+import android.content.ContextWrapper;
+import android.content.SharedPreferences;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -82,6 +84,7 @@ public final class AppearanceCompletionTest {
             AtomicReference<CalendarStore> reference=new AtomicReference<>();
             main(()->reference.set(CalendarStore.get(context)));store=reference.get();
             assertOffline();assertTrue("Use a fresh QA app for these fixtures",store.list().isEmpty());
+            assertLegacyFontMigration();
             shell("cmd uimode night no");resize(2280,1980);
             String circleId=seed(CIRCLE_TITLE,9),widgetId=seed(WIDGET_TITLE,10);
             instrumentation.startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
@@ -154,6 +157,7 @@ public final class AppearanceCompletionTest {
             assertFalse(record(widgetId).deleted);assertOffline();
             report.append("PASS production widget completion helper is idempotent: second completion keeps completed/revision/pending unchanged\n");
             assertRemoteViewsApplyAndReapply(circleId);
+            report.append(FontIndependenceChecks.run(instrumentation,context,store,current(),artifacts));
             report.append("NOT VERIFIED here: system widget binding, receiver host/lock-screen validation, and physical fold hinge.\n");
         } catch(Throwable failure) {
             report.append("FAIL ").append(failure.getClass().getSimpleName()).append(": ").append(failure.getMessage()).append('\n');
@@ -167,6 +171,33 @@ public final class AppearanceCompletionTest {
     }
 
     private Activity current(){return resumed.get();}
+    private void assertLegacyFontMigration() {
+        // Only the emulator test constructs legacy data, in a separate preferences namespace.
+        // Never change the QA app's actual appearance file, let alone the release profile.
+        Context isolated=new ContextWrapper(context) {
+            @Override public Context getApplicationContext(){return this;}
+            @Override public SharedPreferences getSharedPreferences(String name,int mode){return context.getSharedPreferences("font-migration-fixture-"+name,mode);}
+        };
+        SharedPreferences prefs=isolated.getSharedPreferences("appearance",Context.MODE_PRIVATE);
+        main(()->{
+            assertTrue(prefs.edit().clear().putFloat("font_scale",1.3f).commit());
+            assertEquals(1.3f,DisplayPreferences.appFontScale(isolated),.001f);
+            assertEquals(1.3f,DisplayPreferences.widgetFontScale(isolated),.001f);
+            assertTrue(DisplayPreferences.setAppFontScale(isolated,.85f));
+            assertEquals(.85f,DisplayPreferences.appFontScale(isolated),.001f);
+            assertEquals("Changing App must preserve the legacy widget size",1.3f,DisplayPreferences.widgetFontScale(isolated),.001f);
+            assertTrue(DisplayPreferences.setWidgetFontScale(isolated,2f));
+            assertEquals(.85f,DisplayPreferences.appFontScale(isolated),.001f);assertEquals(2f,DisplayPreferences.widgetFontScale(isolated),.001f);
+            assertTrue(DisplayPreferences.setAppFontScale(isolated,1.5f));
+            assertEquals("Existing widget preference must win over legacy fallback",2f,DisplayPreferences.widgetFontScale(isolated),.001f);
+            assertTrue(prefs.edit().clear().putFloat("font_scale",1.15f).commit());
+            assertTrue(DisplayPreferences.setWidgetFontScale(isolated,1.75f));
+            assertEquals("Setting Widget first must preserve the legacy App size",1.15f,DisplayPreferences.appFontScale(isolated),.001f);
+            assertEquals(1.75f,DisplayPreferences.widgetFontScale(isolated),.001f);
+            assertTrue(prefs.edit().clear().commit());
+        });
+        report.append("PASS isolated legacy font_scale migration preserves both prior sizes; first App or Widget change does not overwrite the other\n");
+    }
     private void assertRemoteViewsApplyAndReapply(String pendingId)throws Exception {
         // Invoke the existing private renderer, avoiding any production-only-for-tests entry point.
         // No PendingIntent is sent and no fabricated widget id is granted host privileges.
@@ -176,14 +207,14 @@ public final class AppearanceCompletionTest {
                 boolean.class,List.class,CalendarStore.class,boolean.class,metricsClass);build.setAccessible(true);
         List<SyncCore.Record> records=Collections.singletonList(record(pendingId));
         for(int layout:new int[]{R.layout.widget_agenda_compact,R.layout.widget_agenda_wide,R.layout.widget_agenda_tall}) {
-            main(()->{DisplayPreferences.setTheme(context,"light");DisplayPreferences.setFontScale(context,1.5f);});
+            main(()->{DisplayPreferences.setTheme(context,"light");DisplayPreferences.setWidgetFontScale(context,2f);});
             RemoteViews light=(RemoteViews)build.invoke(null,context,170000,layout,5,true,records,store,false,constructor.newInstance(context));
             AtomicReference<View> rendered=new AtomicReference<>();AtomicReference<Float> largeSize=new AtomicReference<>();AtomicReference<Integer> lightColor=new AtomicReference<>();
             main(()->{View view=light.apply(context,new FrameLayout(context));rendered.set(view);
                 TextView label=view.findViewById(R.id.widget_label_1);assertTrue(label.getText().toString().contains(CIRCLE_TITLE));
                 largeSize.set(label.getTextSize());lightColor.set(label.getCurrentTextColor());
                 assertNotNull(view.findViewById(R.id.widget_complete_1));assertTrue(view.findViewById(R.id.widget_complete_1).isClickable());});
-            main(()->{DisplayPreferences.setTheme(context,"dark");DisplayPreferences.setFontScale(context,.85f);});
+            main(()->{DisplayPreferences.setTheme(context,"dark");DisplayPreferences.setWidgetFontScale(context,.85f);});
             RemoteViews dark=(RemoteViews)build.invoke(null,context,170000,layout,5,true,records,store,false,constructor.newInstance(context));
             main(()->{dark.reapply(context,rendered.get());TextView label=rendered.get().findViewById(R.id.widget_label_1);
                 assertNotEquals("Widget theme did not update on reapply",lightColor.get().intValue(),label.getCurrentTextColor());
@@ -210,7 +241,7 @@ public final class AppearanceCompletionTest {
         Activity before=current();clickText(label);awaitRecreated(before);awaitText("跟随系统");assertEquals(value,DisplayPreferences.theme(context));
     }
     private void chooseFont(String label,float scale)throws Exception {
-        clickNode(n->nodeText(n).startsWith("字体大小 ·"));awaitText("字体大小");
+        clickNode(n->nodeText(n).startsWith("应用内字号 ·"));awaitText("应用内字号");
         Activity before=current();clickText(label);awaitRecreated(before);awaitText("跟随系统");assertEquals(scale,DisplayPreferences.fontScale(context),.001f);
     }
     private void awaitRecreated(Activity previous)throws Exception {

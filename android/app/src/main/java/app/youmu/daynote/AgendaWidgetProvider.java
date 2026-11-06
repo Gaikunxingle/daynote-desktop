@@ -14,6 +14,7 @@ import android.os.Bundle;
 import android.util.SizeF;
 import android.util.TypedValue;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.RemoteViews;
 import android.widget.Toast;
 
@@ -117,6 +118,47 @@ public final class AgendaWidgetProvider extends AppWidgetProvider {
         if (ids.length != 0) update(app, manager, ids);
     }
 
+    /** Two fixed examples, rendered with the actual widget resources. No store,
+     * credentials, background jobs or PendingIntents are accessed or created. */
+    public static View preview(Context context, ViewGroup parent) {
+        Context app = context.getApplicationContext();
+        Metrics metrics = new Metrics(app);
+        LocalDate exampleDate = LocalDate.of(2026, 1, 1);
+        List<SyncCore.Record> examples = new ArrayList<>();
+        examples.add(example("preview-reading", "阅读", exampleDate, 9));
+        examples.add(example("preview-walk", "散步", exampleDate, 18));
+        RemoteViews views = render(app, 0, R.layout.widget_agenda_compact, 2, true,
+                examples, false, metrics, exampleDate, false, false, false);
+        views.setTextViewText(R.id.widget_date, "今天 · 示例");
+        views.setTextViewText(R.id.widget_status, "字号预览");
+        View result = views.apply(app, parent);
+        result.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                metrics.pixels(metrics.height(2, true))));
+        makePreviewInert(result);
+        return result;
+    }
+
+    private static SyncCore.Record example(String id, String title, LocalDate date, int hour) {
+        SyncCore.Record record = new SyncCore.Record();
+        record.id = id;
+        record.data.title = title;
+        record.data.dueAt = date.atTime(hour, 0).atZone(ZoneId.systemDefault()).toInstant().toString();
+        record.data.hasTime = true;
+        return record;
+    }
+
+    private static void makePreviewInert(View view) {
+        view.setOnClickListener(null);
+        view.setOnLongClickListener(null);
+        view.setClickable(false);
+        view.setLongClickable(false);
+        view.setFocusable(false);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup)view;
+            for (int i = 0; i < group.getChildCount(); i++) makePreviewInert(group.getChildAt(i));
+        }
+    }
+
     private static void update(Context context, AppWidgetManager manager, int[] ids) {
         // Activity resources already include its preference. Widgets instead use
         // application/system resources and multiply the local preference once.
@@ -176,11 +218,17 @@ public final class AgendaWidgetProvider extends AppWidgetProvider {
 
     private static RemoteViews build(Context context, int widgetId, int layout, int rowCount, boolean details,
                                      List<SyncCore.Record> records, CalendarStore store, boolean privateHost, Metrics metrics) {
+        return render(context.getApplicationContext(), widgetId, layout, rowCount, details, records,
+                privateHost, metrics, LocalDate.now(), store.busy(), store.connected(), true);
+    }
+
+    private static RemoteViews render(Context context, int widgetId, int layout, int rowCount, boolean details,
+                                      List<SyncCore.Record> records, boolean privateHost, Metrics metrics,
+                                      LocalDate today, boolean busy, boolean connected, boolean interactive) {
         RemoteViews views = new RemoteViews(context.getPackageName(), layout);
         applyAppearance(views, layout, metrics);
         views.setViewVisibility(R.id.widget_date, details ? View.VISIBLE : View.GONE);
         views.setViewVisibility(R.id.widget_status, details ? View.VISIBLE : View.GONE);
-        LocalDate today = LocalDate.now();
         views.setTextViewText(R.id.widget_date, today.format(DATE));
         if (layout == R.layout.widget_agenda_wide) {
             // A one-row card spends its height on the 44dp completion target.
@@ -188,9 +236,11 @@ public final class AgendaWidgetProvider extends AppWidgetProvider {
             views.setTextViewText(R.id.widget_day_number, String.valueOf(today.getDayOfMonth()));
             views.setTextViewText(R.id.widget_month_label, today.getMonthValue() + "月");
         }
-        views.setOnClickPendingIntent(R.id.widget_root, open(context, widgetId, null, false));
-        views.setOnClickPendingIntent(R.id.widget_add, open(context, widgetId, null, true));
-        views.setOnClickPendingIntent(R.id.widget_refresh, refresh(context, widgetId));
+        if (interactive) {
+            views.setOnClickPendingIntent(R.id.widget_root, open(context, widgetId, null, false));
+            views.setOnClickPendingIntent(R.id.widget_add, open(context, widgetId, null, true));
+            views.setOnClickPendingIntent(R.id.widget_refresh, refresh(context, widgetId));
+        }
         for (int i = 0; i < ROWS.length; i++) {
             if (i >= rowCount || i >= records.size()) {
                 views.setViewVisibility(ROWS[i], View.GONE);
@@ -200,10 +250,12 @@ public final class AgendaWidgetProvider extends AppWidgetProvider {
                 String label = rowLabel(record, today);
                 views.setViewVisibility(ROWS[i], View.VISIBLE);
                 views.setTextViewText(LABELS[i], label);
-                views.setOnClickPendingIntent(LABELS[i], open(context, widgetId, record, false));
+                if (interactive) {
+                    views.setOnClickPendingIntent(LABELS[i], open(context, widgetId, record, false));
+                    views.setOnClickPendingIntent(COMPLETE[i], complete(context, widgetId, record.id));
+                }
                 views.setContentDescription(LABELS[i], label);
-                views.setOnClickPendingIntent(COMPLETE[i], complete(context, widgetId, record.id));
-                views.setContentDescription(COMPLETE[i], "完成：" + record.data.title);
+                views.setContentDescription(COMPLETE[i], interactive ? "完成：" + record.data.title : "完成圆圈示例");
             }
         }
         boolean empty = records.isEmpty();
@@ -211,9 +263,9 @@ public final class AgendaWidgetProvider extends AppWidgetProvider {
         views.setTextViewText(R.id.widget_empty, privateHost ? "解锁并打开朝夕查看日程" : "近日没有待办日程");
         String footer;
         if (privateHost) footer = "锁屏不显示个人日程";
-        else if (store.busy()) footer = "正在同步…";
+        else if (busy) footer = "正在同步…";
         else if (records.size() > rowCount) footer = "还有 " + (records.size() - rowCount) + " 项 · 点开查看";
-        else footer = store.connected() ? "本机日程 · 点开查看同步状态" : "本机日程 · 尚未连接同步";
+        else footer = connected ? "本机日程 · 点开查看同步状态" : "本机日程 · 尚未连接同步";
         views.setTextViewText(R.id.widget_status, footer);
         return views;
     }
@@ -261,8 +313,9 @@ public final class AgendaWidgetProvider extends AppWidgetProvider {
         final float density;
         final int header, meta, row;
         Metrics(Context context) {
+            context = context.getApplicationContext();
             dark = DisplayPreferences.isDark(context);
-            float chosen = DisplayPreferences.fontScale(context);
+            float chosen = DisplayPreferences.widgetFontScale(context);
             fontScale = Float.isFinite(chosen) && chosen > 0 ? chosen : 1;
             density = context.getResources().getDisplayMetrics().density;
             header = Math.max(32, textDp(context, 18) + 8);
