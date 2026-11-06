@@ -10,8 +10,10 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
+import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -84,12 +86,18 @@ public final class AppearanceCompletionTest {
             String circleId=seed(CIRCLE_TITLE,9),widgetId=seed(WIDGET_TITLE,10);
             instrumentation.startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitFor(()->resumed.get()!=null,"MainActivity did not resume");idle();
-            float originalSize=headerTextSize();
+            float originalSize=headerTextSize(),originalSp=headerSp();
 
             openSettings();chooseTheme("浅色","light");chooseFont("特大（150%）",1.5f);closeSettings();
             assertFalse(DisplayPreferences.isDark(current()));assertHeaderContrast(false);
             float enlargedSize=headerTextSize();
-            assertTrue("Font setting did not enlarge the actual header",enlargedSize>originalSize*1.2f);
+            // Android 14+ deliberately enlarges big headings less than small body text.
+            // Compare with the platform's SP curve rather than imposing a linear ratio.
+            float expectedSize=expectedHeaderPixels(originalSp);
+            report.append("Header font pixels: before=").append(originalSize).append(", after=").append(enlargedSize)
+                    .append(", platform expected=").append(expectedSize).append('\n');
+            assertTrue("Font setting did not enlarge the actual header: "+originalSize+" -> "+enlargedSize,enlargedSize>originalSize+1);
+            assertEquals("Header does not use the platform's scaled SP size",expectedSize,enlargedSize,.75f);
             screenshot("01-wide-light-150.png");resize(1080,2400);screenshot("02-compact-light-150.png");
             Activity before=current();main(before::recreate);awaitRecreated(before);idle();
             assertEquals("light",DisplayPreferences.theme(context));assertEquals(1.5f,DisplayPreferences.fontScale(context),.001f);
@@ -209,6 +217,11 @@ public final class AppearanceCompletionTest {
         waitFor(()->current()!=null&&current()!=previous&&!current().isDestroyed(),"Activity was not recreated");idle();
     }
     private float headerTextSize(){AtomicReference<Float> size=new AtomicReference<>();main(()->size.set(header().getTextSize()));return size.get();}
+    private float headerSp(){AtomicReference<Float> size=new AtomicReference<>();main(()->{
+        TextView label=header();android.util.DisplayMetrics metrics=label.getResources().getDisplayMetrics();
+        size.set(Build.VERSION.SDK_INT>=34?TypedValue.deriveDimension(TypedValue.COMPLEX_UNIT_SP,label.getTextSize(),metrics):label.getTextSize()/metrics.scaledDensity);
+    });return size.get();}
+    private float expectedHeaderPixels(float sp){AtomicReference<Float> size=new AtomicReference<>();main(()->size.set(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP,sp,header().getResources().getDisplayMetrics())));return size.get();}
     private TextView header(){View view=findView(current().findViewById(android.R.id.content),v->v instanceof TextView t&&"朝夕日历".contentEquals(t.getText()));assertNotNull(view);return (TextView)view;}
     private void assertHeaderContrast(boolean dark) {
         assertTrue("Actual header color does not match selected theme",headerMatchesTheme(dark));
