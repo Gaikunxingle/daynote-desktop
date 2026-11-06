@@ -136,7 +136,7 @@ final class FontIndependenceChecks {
     }
     private void assertInert(View view){assertFalse("Preview must not contain clickable controls",view.isClickable());assertFalse(view.isLongClickable());assertFalse(view.isFocusable());if(view instanceof ViewGroup group)for(int i=0;i<group.getChildCount();i++)assertInert(group.getChildAt(i));}
     private void click(Predicate<AccessibilityNodeInfo> predicate)throws Exception {
-        AccessibilityNodeInfo node=await(predicate);node.performAction(AccessibilityNodeInfo.ACTION_SHOW_ON_SCREEN);idle();node=await(predicate);
+        AccessibilityNodeInfo node=await(predicate);node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.getId());idle();node=await(predicate);
         while(node!=null&&!node.isClickable())node=node.getParent();assertNotNull("Control is not clickable",node);assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK));idle();
     }
     private AccessibilityNodeInfo await(Predicate<AccessibilityNodeInfo> predicate)throws Exception {
