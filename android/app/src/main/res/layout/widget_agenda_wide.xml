@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="12dp" android:background="@drawable/widget_background">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="28dp" android:gravity="center_vertical">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="朝夕" android:textSize="18sp" android:textStyle="bold" android:textColor="#22384A" />
+        <TextView android:id="@+id/widget_date" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:layout_marginStart="12dp" android:text="今天 · 最近安排" android:textSize="11sp"
+            android:textColor="#768593" android:singleLine="true" android:ellipsize="end" />
+        <TextView android:id="@+id/widget_refresh" android:layout_width="32dp" android:layout_height="28dp"
+            android:text="↻" android:textSize="20sp" android:textColor="#577187" android:gravity="center"
+            android:background="@drawable/widget_action_background" android:contentDescription="刷新日程" />
+        <TextView android:id="@+id/widget_add" android:layout_width="32dp" android:layout_height="28dp"
+            android:layout_marginStart="6dp" android:text="＋" android:textSize="20sp" android:textColor="#B34F38"
+            android:gravity="center" android:background="@drawable/widget_action_background" android:contentDescription="新建日程" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:gravity="center_vertical" android:baselineAligned="false">
+        <LinearLayout android:layout_width="62dp" android:layout_height="match_parent" android:orientation="vertical"
+            android:gravity="center" android:layout_marginEnd="14dp">
+            <TextView android:id="@+id/widget_day_number" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="06" android:textSize="32sp" android:textStyle="bold" android:textColor="#B75C44" />
+            <TextView android:id="@+id/widget_month_label" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="11月" android:textSize="11sp" android:textColor="#8793A0" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+            android:orientation="vertical" android:gravity="center_vertical">
+            <TextView android:id="@+id/widget_row_1" android:layout_width="match_parent" android:layout_height="24dp"
+                android:text="09:00  课题讨论" android:textSize="13sp" android:textColor="#273D4F" android:gravity="center_vertical"
+                android:singleLine="true" android:ellipsize="end" />
+            <TextView android:id="@+id/widget_row_2" android:layout_width="match_parent" android:layout_height="24dp"
+                android:text="14:30  阅读与记录" android:textSize="13sp" android:textColor="#273D4F" android:gravity="center_vertical"
+                android:singleLine="true" android:ellipsize="end" />
+            <TextView android:id="@+id/widget_row_3" android:layout_width="match_parent" android:layout_height="24dp"
+                android:text="明天  提交报告" android:textSize="13sp" android:textColor="#273D4F" android:gravity="center_vertical"
+                android:singleLine="true" android:ellipsize="end" />
+            <TextView android:id="@+id/widget_empty" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textSize="13sp" android:textColor="#768593" android:visibility="gone" />
+        </LinearLayout>
+    </LinearLayout>
+    <TextView android:id="@+id/widget_status" android:layout_width="match_parent" android:layout_height="16dp"
+        android:text="轻点日程查看详情" android:textSize="11sp" android:textColor="#8793A0" android:singleLine="true" android:ellipsize="end" />
+</LinearLayout>

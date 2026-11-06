@@ -46,3 +46,11 @@ capture-error.txt
 /apple/.build/
 /apple/build/
 **/xcuserdata/
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+*.apk
+*.aab
+*.jks
+*.keystore

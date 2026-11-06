@@ -1,0 +1,86 @@
+name: Android native preview QA
+on:
+  push:
+    branches: [feature/android-fold-sync]
+    paths: ['android/**', '.github/workflows/android-preview.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-native-preview-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-android:
+    if: github.ref == 'refs/heads/feature/android-fold-sync'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install compile SDK and enable runner KVM
+        run: |
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          mkdir -p android/ci-artifacts
+      - name: Unit tests and debug instrumentation packages
+        working-directory: android
+        run: |
+          bash ./gradlew --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest 2>&1 | tee ci-artifacts/build-and-unit-tests.log
+      - name: Prepare emulator-only UI runner
+        working-directory: android
+        run: |
+          cat > ci-artifacts/run-emulator.sh <<'BASH'
+          #!/bin/bash
+          set -euo pipefail
+          if [ "$(adb -e shell getprop ro.kernel.qemu | tr -d '\r')" != '1' ]; then
+            printf 'Refusing to run UI fixtures or change display size on a non-emulator.\n'
+            exit 1
+          fi
+          cleanup() {
+            adb -e pull /sdcard/Android/data/app.youmu.daynote.android.qa/files/ui-qa ci-artifacts/screenshots >/dev/null 2>&1 || true
+            adb -e logcat -d -v threadtime > ci-artifacts/emulator-logcat.txt 2>&1 || true
+            adb -e shell wm size reset >/dev/null 2>&1 || true
+            adb -e shell wm density reset >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          adb -e shell settings put system accelerometer_rotation 0
+          adb -e shell settings put system user_rotation 0
+          adb -e install -r app/build/outputs/apk/debug/app-debug.apk
+          adb -e install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          # Explicitly select UiSmokeTest. DeviceIntegrationTest requires separate,
+          # disposable cloud credentials and must never run as part of this UI job.
+          adb -e shell am instrument -w -r -e class app.youmu.daynote.UiSmokeTest \
+            app.youmu.daynote.android.qa.test/androidx.test.runner.AndroidJUnitRunner \
+            2>&1 | tee ci-artifacts/instrumentation.txt
+          grep -q 'OK (1 test)' ci-artifacts/instrumentation.txt
+          BASH
+      - name: Run isolated native UI on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          working-directory: android
+          emulator-boot-timeout: 300
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: bash ci-artifacts/run-emulator.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Daynote-Android-Native-QA
+          path: |
+            android/ci-artifacts/
+            android/app/build/reports/tests/
+            android/app/build/test-results/
+            android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
+          retention-days: 7

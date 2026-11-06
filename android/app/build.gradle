@@ -1,0 +1,56 @@
+plugins { id 'com.android.application' }
+
+def signingProperties = new Properties()
+def signingFile = rootProject.file('../.private/android-signing.properties')
+if (signingFile.exists()) signingFile.withInputStream { signingProperties.load(it) }
+
+android {
+    namespace 'app.youmu.daynote'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'app.youmu.daynote.android'
+        minSdk 26
+        targetSdk 36
+        versionCode 260
+        versionName '2.6.0-preview'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    signingConfigs {
+        if (signingFile.exists()) {
+            preview {
+                storeFile file(signingProperties['storeFile'])
+                storePassword signingProperties['storePassword']
+                keyAlias signingProperties['keyAlias']
+                keyPassword signingProperties['keyPassword']
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            applicationIdSuffix '.qa'
+            versionNameSuffix '-qa'
+            resValue 'string', 'app_name', '朝夕 · 测试'
+        }
+        release {
+            minifyEnabled false
+            resValue 'string', 'app_name', '朝夕日历'
+            if (signingFile.exists()) signingConfig signingConfigs.preview
+        }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildFeatures { buildConfig true }
+    lint { abortOnError true }
+}
+
+dependencies {
+    // Apache-2.0. WindowManager observes fold hinges and posture; no web runtime.
+    implementation 'androidx.window:window:1.5.1'
+    implementation 'androidx.window:window-java:1.5.1'
+    implementation 'androidx.core:core:1.16.0'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
