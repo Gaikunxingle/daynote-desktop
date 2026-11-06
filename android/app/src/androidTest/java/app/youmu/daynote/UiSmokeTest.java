@@ -82,7 +82,7 @@ public final class UiSmokeTest {
 
             resizeDisplay(2280,1980);idle();awaitText("朝夕日历");assertLayout(true);assertCalendarColumnsVisible();
             screenshot("02-expanded-760dp.png");report.append("PASS expanded two-pane native calendar, all seven columns visible at 760 dp\n");
-            clickText("设备");awaitText("个人同步码");screenshot("03-sync-settings.png");clickText("完成");
+            clickText("设置");awaitText("显示与字体");screenshot("03-settings.png");clickText("完成");
 
             resizeDisplay(1080,2400);idle();
             main(()->activity.startActivity(new Intent(context,MainActivity.class).setAction(MainActivity.ACTION_NEW)

@@ -135,7 +135,13 @@ public final class CalendarStore {
     }
     public boolean toggle(String id) {
         requireMain(); SyncCore.Record r=snapshot().records.get(id); if(r==null||r.deleted)return false;
-        SyncCore.TaskData d=r.data.copy(); d.completed=!d.completed; return save(id,d,r.revision);
+        return setCompleted(id,!r.data.completed);
+    }
+    public boolean setCompleted(String id,boolean completed) {
+        requireMain(); SyncCore.Record r=snapshot().records.get(id); if(r==null||r.deleted)return false;
+        // An explicit target state makes repeated taps or PendingIntent delivery harmless.
+        if(r.data.completed==completed)return true;
+        SyncCore.TaskData d=r.data.copy(); d.completed=completed; return save(id,d,r.revision);
     }
     private void changed() { notifyListeners(); scheduleSync(); }
     private void scheduleSync() { main.removeCallbacks(scheduledSync); if(active&&connected())main.postDelayed(scheduledSync,1000); }

@@ -11,8 +11,8 @@ android {
         applicationId 'app.youmu.daynote.android'
         minSdk 26
         targetSdk 36
-        versionCode 260
-        versionName '2.6.0-preview'
+        versionCode 261
+        versionName '2.6.1-preview'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     signingConfigs {

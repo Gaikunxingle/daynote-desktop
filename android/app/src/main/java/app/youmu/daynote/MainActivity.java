@@ -3,6 +3,7 @@ package app.youmu.daynote;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Color;
@@ -22,6 +23,8 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -80,6 +83,10 @@ public final class MainActivity extends Activity implements CalendarStore.Listen
             foldBounds = next; verticalFold = vertical; queueRender();
         }
     };
+
+    @Override protected void attachBaseContext(Context base) {
+        super.attachBaseContext(DisplayPreferences.wrap(base));
+    }
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -153,7 +160,7 @@ public final class MainActivity extends Activity implements CalendarStore.Listen
         header.addView(wordmark,new LinearLayout.LayoutParams(0,-2,1));
         Button today=ui.button("今天",false,()-> { selectedDate=LocalDate.now();month=YearMonth.now();filter=0;rightY=0;if(rightScroll!=null)rightScroll.scrollTo(0,0);queueRender(); });
         header.addView(today,new LinearLayout.LayoutParams(-2,ui.dp(48)));
-        Button settings=ui.button("设备",false,this::showSettings); settings.setContentDescription("同步与提醒设置");
+        Button settings=ui.button("设置",false,this::showSettings); settings.setContentDescription("设置：字体、外观与同步");
         LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-2,ui.dp(48));sp.setMargins(ui.dp(6),0,0,0);header.addView(settings,sp);
         root.addView(header);
         host=new FrameLayout(this); root.addView(host,new LinearLayout.LayoutParams(-1,0,1));
@@ -226,6 +233,8 @@ public final class MainActivity extends Activity implements CalendarStore.Listen
         grid.addView(weekdays);
         LocalDate first=month.atDay(1);int offset=first.getDayOfWeek().getValue()-1;int slots=((offset+month.lengthOfMonth()+6)/7)*7;
         LocalDate gridStart=first.minusDays(offset);
+        int dotHeight=Math.max(ui.dp(13),ui.sp(11)+ui.dp(2));
+        int cellHeight=Math.max(ui.dp(52),ui.sp(16)+dotHeight+ui.dp(10));
         for(int r=0;r<slots/7;r++){
             LinearLayout week=ui.row();
             for(int c=0;c<7;c++){
@@ -235,11 +244,11 @@ public final class MainActivity extends Activity implements CalendarStore.Listen
                 TextView number=ui.text(Integer.toString(date.getDayOfMonth()),16,selected?(ui.dark?Color.BLACK:Color.WHITE):inside?ui.ink:ui.muted,date.equals(LocalDate.now()));
                 number.setGravity(Gravity.CENTER);
                 if(!inside)number.setAlpha(.45f);cell.addView(number,new LinearLayout.LayoutParams(-1,-2));
-                long count=records.stream().filter(t->date.equals(t.data.dueDate())).count();
-                TextView dot=ui.text(count>0?"•":" ",11,selected?(ui.dark?Color.BLACK:Color.WHITE):ui.accent,true);dot.setGravity(Gravity.CENTER);cell.addView(dot,new LinearLayout.LayoutParams(-1,ui.dp(13)));
+                long count=records.stream().filter(t->!t.data.completed&&date.equals(t.data.dueDate())).count();
+                TextView dot=ui.text(count>0?"•":" ",11,selected?(ui.dark?Color.BLACK:Color.WHITE):ui.accent,true);dot.setGravity(Gravity.CENTER);cell.addView(dot,new LinearLayout.LayoutParams(-1,dotHeight));
                 cell.setContentDescription(date.format(DateTimeFormatter.ofPattern("yyyy年M月d日 E",Locale.CHINA))+(count>0?"，"+count+"项日程":"")+(selected?"，已选择":""));
                 cell.setFocusable(true);cell.setOnClickListener(v->{selectedDate=date;month=YearMonth.from(date);filter=0;rightY=0;if(rightScroll!=null)rightScroll.scrollTo(0,0);queueRender();});
-                week.addView(cell,new LinearLayout.LayoutParams(0,ui.dp(52),1));
+                week.addView(cell,new LinearLayout.LayoutParams(0,cellHeight,1));
             }
             grid.addView(week);
         }
@@ -281,12 +290,11 @@ public final class MainActivity extends Activity implements CalendarStore.Listen
         return panel;
     }
     private boolean matches(SyncCore.Record r) {
-        return switch(filter){case 1->true;case 2->r.data.dueAt==null&&!r.data.completed;case 3->r.data.isDeadline&&!r.data.completed;case 4->r.data.completed;default->selectedDate.equals(r.data.dueDate());};
+        return switch(filter){case 1->!r.data.completed;case 2->r.data.dueAt==null&&!r.data.completed;case 3->r.data.isDeadline&&!r.data.completed;case 4->r.data.completed;default->!r.data.completed&&selectedDate.equals(r.data.dueDate());};
     }
     private View taskCard(SyncCore.Record r) {
         LinearLayout card=ui.row();card.setGravity(Gravity.TOP);card.setPadding(ui.dp(4),ui.dp(10),ui.dp(12),ui.dp(10));card.setBackground(ui.ripple(ui.surface,18));
-        Button check=ui.button(r.data.completed?"✓":"○",false,()->{store.toggle(r.id);updateStatus();});check.setTextSize(24);check.setPadding(0,0,0,0);
-        check.setTextColor(r.data.completed?ui.muted:ui.color(r.data.colorId));check.setBackground(ui.ripple(Color.TRANSPARENT,24));
+        Button check=ui.completionButton(r.data.completed,ui.color(r.data.colorId),()->{store.setCompleted(r.id,!r.data.completed);updateStatus();});
         check.setContentDescription(r.data.completed?"恢复待办："+r.data.title:"完成："+r.data.title);check.setEnabled(store.canWrite());
         card.addView(check,new LinearLayout.LayoutParams(ui.dp(48),ui.dp(48)));
         LinearLayout details=ui.column();details.setPadding(ui.dp(2),ui.dp(5),0,ui.dp(4));
@@ -314,7 +322,7 @@ public final class MainActivity extends Activity implements CalendarStore.Listen
     }
     private void showTaskActions(SyncCore.Record r) {
         new AlertDialog.Builder(this).setTitle(r.data.title).setItems(new String[]{"编辑",r.data.completed?"恢复待办":"标记完成","删除"},(d,which)-> {
-            if(which==0)openEditor(r,null,null);else if(which==1)store.toggle(r.id);else confirmDelete(r);
+            if(which==0)openEditor(r,null,null);else if(which==1)store.setCompleted(r.id,!r.data.completed);else confirmDelete(r);
         }).setNegativeButton("取消",null).show();
     }
     private void confirmDelete(SyncCore.Record r) {
@@ -357,6 +365,35 @@ public final class MainActivity extends Activity implements CalendarStore.Listen
     private void showSettings() {
         if(settingsDialog!=null&&settingsDialog.isShowing())return;
         LinearLayout page=ui.column();page.setPadding(ui.dp(22),ui.dp(12),ui.dp(22),ui.dp(20));
+        page.addView(ui.text("显示与字体",15,ui.ink,true));page.addView(ui.space(8));
+        RadioGroup modes=new RadioGroup(this);modes.setOrientation(RadioGroup.VERTICAL);
+        String[] labels={"跟随系统","浅色","深色"},values={"system","light","dark"};
+        String selectedMode=DisplayPreferences.theme(this);
+        for(int i=0;i<labels.length;i++) {
+            RadioButton option=new RadioButton(this);option.setId(View.generateViewId());
+            option.setText(labels[i]);option.setTextSize(14);option.setTextColor(ui.ink);option.setMinHeight(ui.dp(48));
+            option.setButtonTintList(new android.content.res.ColorStateList(
+                    new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{ui.accent,ui.muted}));
+            String value=values[i];option.setTag(value);modes.addView(option,new RadioGroup.LayoutParams(-1,-2));
+            option.setChecked(value.equals(selectedMode));
+        }
+        modes.setOnCheckedChangeListener((group,id)-> {
+            View selected=group.findViewById(id);if(selected==null)return;
+            String value=(String)selected.getTag();if(value.equals(DisplayPreferences.theme(this)))return;
+            applyAppearance(DisplayPreferences.setTheme(this,value));
+        });
+        page.addView(modes);page.addView(ui.space(8));
+        Button font=ui.button("字体大小 · "+DisplayPreferences.FONT_LABELS[DisplayPreferences.fontIndex(this)],false,()-> {
+            new AlertDialog.Builder(this).setTitle("字体大小")
+                    .setSingleChoiceItems(DisplayPreferences.FONT_LABELS,DisplayPreferences.fontIndex(this),(dialog,which)-> {
+                        dialog.dismiss();float scale=DisplayPreferences.FONT_SCALES[which];
+                        if(scale!=DisplayPreferences.fontScale(this))applyAppearance(DisplayPreferences.setFontScale(this,scale));
+                    }).setNegativeButton("取消",null).show();
+        });font.setContentDescription("字体大小");page.addView(font,new LinearLayout.LayoutParams(-1,-2));
+        TextView preview=ui.text("字体预览：把每一天安排得从容一些。",16,ui.ink,false);
+        preview.setPadding(0,ui.dp(12),0,ui.dp(6));page.addView(preview);
+        page.addView(ui.text("同时用于日历、编辑窗口和桌面小组件。仅影响这台手机。",12,ui.muted,false));page.addView(ui.space(22));
+        page.addView(ui.text("设备同步",15,ui.ink,true));page.addView(ui.space(8));
         settingsStatus=ui.text(accountSummary(),14,ui.muted,false);settingsStatus.setLineSpacing(ui.dp(6),1);page.addView(settingsStatus);page.addView(ui.space(18));
         TextView keyLabel=ui.text("个人同步码",13,ui.ink,true);page.addView(keyLabel);page.addView(ui.space(6));
         EditText code=new EditText(this);code.setHint("粘贴你的同步码");code.setTextColor(ui.ink);code.setHintTextColor(ui.muted);code.setTextSize(14);
@@ -386,8 +423,14 @@ public final class MainActivity extends Activity implements CalendarStore.Listen
         }),new LinearLayout.LayoutParams(-1,ui.dp(48)));
         TextView widgets=ui.text("长按手机桌面 → 小组件 → 朝夕日历，可添加日程卡片。折叠、展开和分屏时，应用会按可用空间调整布局。",12,ui.muted,false);widgets.setPadding(0,ui.dp(12),0,0);page.addView(widgets);
         ScrollView scroll=scroll(page);
-        settingsDialog=new AlertDialog.Builder(this).setTitle("设备同步").setView(scroll).setPositiveButton("完成",null).create();
+        settingsDialog=new AlertDialog.Builder(this).setTitle("设置").setView(scroll).setPositiveButton("完成",null).create();
         settingsDialog.setOnDismissListener(d->{settingsDialog=null;settingsStatus=null;connectButton=null;disconnectButton=null;});settingsDialog.show();updateStatus();
+    }
+    private void applyAppearance(boolean saved) {
+        if(!saved){Toast.makeText(this,"设置暂时未保存，请重试",Toast.LENGTH_SHORT).show();return;}
+        AgendaWidgetProvider.refreshAll(this);
+        // Saved activity state restores the selected date, view, scroll and any editor draft.
+        recreate();
     }
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);if(requestCode==31){ReminderScheduler.reschedule(this);Toast.makeText(this,results.length>0&&results[0]==0?"通知已允许":"可稍后在系统设置中允许通知",Toast.LENGTH_SHORT).show();}}
 }

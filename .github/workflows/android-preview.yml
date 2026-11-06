@@ -49,6 +49,7 @@ jobs:
           fi
           cleanup() {
             adb -e pull /sdcard/Android/data/app.youmu.daynote.android.qa/files/ui-qa ci-artifacts/screenshots >/dev/null 2>&1 || true
+            adb -e pull /sdcard/Android/data/app.youmu.daynote.android.qa/files/appearance-qa ci-artifacts/appearance >/dev/null 2>&1 || true
             adb -e logcat -d -v threadtime > ci-artifacts/emulator-logcat.txt 2>&1 || true
             adb -e shell wm size reset >/dev/null 2>&1 || true
             adb -e shell wm density reset >/dev/null 2>&1 || true
@@ -64,6 +65,14 @@ jobs:
             app.youmu.daynote.android.qa.test/androidx.test.runner.AndroidJUnitRunner \
             2>&1 | tee ci-artifacts/instrumentation.txt
           grep -q 'OK (1 test)' ci-artifacts/instrumentation.txt
+          # Preserve the first test's evidence before resetting only the disposable QA package.
+          adb -e pull /sdcard/Android/data/app.youmu.daynote.android.qa/files/ui-qa ci-artifacts/screenshots
+          test "$(adb -e shell getprop ro.kernel.qemu | tr -d '\r')" = '1'
+          adb -e shell pm clear app.youmu.daynote.android.qa
+          adb -e shell am instrument -w -r -e class app.youmu.daynote.AppearanceCompletionTest \
+            app.youmu.daynote.android.qa.test/androidx.test.runner.AndroidJUnitRunner \
+            2>&1 | tee ci-artifacts/appearance-instrumentation.txt
+          grep -q 'OK (1 test)' ci-artifacts/appearance-instrumentation.txt
           BASH
       - name: Run isolated native UI on Android emulator
         uses: reactivecircus/android-emulator-runner@v2

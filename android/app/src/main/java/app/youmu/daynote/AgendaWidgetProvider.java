@@ -1,6 +1,7 @@
 package app.youmu.daynote;
 
 import android.app.PendingIntent;
+import android.app.KeyguardManager;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.appwidget.AppWidgetProviderInfo;
@@ -11,8 +12,10 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.SizeF;
+import android.util.TypedValue;
 import android.view.View;
 import android.widget.RemoteViews;
+import android.widget.Toast;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -27,18 +30,66 @@ import java.util.Map;
 /** Home-screen-only widget, rendered immediately from the private local cache. */
 public final class AgendaWidgetProvider extends AppWidgetProvider {
     public static final String ACTION_REFRESH = "app.youmu.daynote.REFRESH_WIDGET";
+    public static final String ACTION_COMPLETE = "app.youmu.daynote.COMPLETE_WIDGET_TASK";
     private static final int[] ROWS = {R.id.widget_row_1, R.id.widget_row_2, R.id.widget_row_3,
             R.id.widget_row_4, R.id.widget_row_5};
+    private static final int[] LABELS = {R.id.widget_label_1, R.id.widget_label_2, R.id.widget_label_3,
+            R.id.widget_label_4, R.id.widget_label_5};
+    private static final int[] COMPLETE = {R.id.widget_complete_1, R.id.widget_complete_2, R.id.widget_complete_3,
+            R.id.widget_complete_4, R.id.widget_complete_5};
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("M月d日 · EEEE", Locale.CHINA);
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA);
 
     @Override public void onReceive(Context context, Intent intent) {
+        if (intent == null) return;
+        if (ACTION_COMPLETE.equals(intent.getAction())) {
+            Context app = context.getApplicationContext();
+            int widgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
+            if (!canCompleteFromWidget(app, widgetId)) return;
+            CalendarStore store = CalendarStore.get(app);
+            if (completeTask(store, intent.getStringExtra("task_id"))) {
+                // save() commits atomically before the card disappears. A receiver
+                // must also arrange reminders/sync while no Activity is running.
+                refreshAll(app);
+                ReminderScheduler.reschedule(app);
+                SyncJobService.requestNow(app);
+            } else {
+                refreshAll(app);
+                Toast.makeText(app, "未能完成此事项，请打开朝夕查看。", Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
         if (ACTION_REFRESH.equals(intent.getAction())) {
             SyncJobService.requestNow(context);
             refreshAll(context);
             return;
         }
         super.onReceive(context, intent);
+    }
+
+    private static boolean canCompleteFromWidget(Context context, int widgetId) {
+        KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
+        if (keyguard == null || keyguard.isKeyguardLocked()) return false;
+        AppWidgetManager manager = AppWidgetManager.getInstance(context);
+        int[] owned = manager.getAppWidgetIds(new ComponentName(context, AgendaWidgetProvider.class));
+        for (int id : owned) {
+            if (id == widgetId) return !isPrivateHost(manager.getAppWidgetOptions(id));
+        }
+        return false;
+    }
+
+    // Kept separate from host validation for isolated .qa tests. Always read the
+    // current record: a stale card must not overwrite a newer title or time.
+    static boolean completeTask(CalendarStore store, String taskId) {
+        if (taskId == null || taskId.isEmpty()) return false;
+        return store.setCompleted(taskId, true);
+    }
+
+    private static boolean isPrivateHost(Bundle options) {
+        int category = options.getInt(AppWidgetManager.OPTION_APPWIDGET_HOST_CATEGORY,
+                AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN);
+        return (category & AppWidgetProviderInfo.WIDGET_CATEGORY_KEYGUARD) != 0
+                || (category & AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN) == 0;
     }
 
     @Override public void onEnabled(Context context) {
@@ -67,25 +118,41 @@ public final class AgendaWidgetProvider extends AppWidgetProvider {
     }
 
     private static void update(Context context, AppWidgetManager manager, int[] ids) {
+        // Activity resources already include its preference. Widgets instead use
+        // application/system resources and multiply the local preference once.
+        context = context.getApplicationContext();
         CalendarStore store = CalendarStore.get(context);
+        Metrics metrics = new Metrics(context);
         List<SyncCore.Record> records = relevant(store.list(), LocalDate.now());
         for (int id : ids) {
             Bundle options = manager.getAppWidgetOptions(id);
-            boolean privateHost = (options.getInt(AppWidgetManager.OPTION_APPWIDGET_HOST_CATEGORY,
-                    AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN) & AppWidgetProviderInfo.WIDGET_CATEGORY_KEYGUARD) != 0;
+            boolean privateHost = isPrivateHost(options);
             List<SyncCore.Record> displayed = privateHost ? java.util.Collections.emptyList() : records;
             RemoteViews views;
             if (Build.VERSION.SDK_INT >= 31) {
                 Map<SizeF, RemoteViews> layouts = new LinkedHashMap<>();
-                layouts.put(new SizeF(160, 140), build(context, id, R.layout.widget_agenda_compact, 2, displayed, store, privateHost));
-                layouts.put(new SizeF(300, 140), build(context, id, R.layout.widget_agenda_wide, 3, displayed, store, privateHost));
-                layouts.put(new SizeF(160, 250), build(context, id, R.layout.widget_agenda_tall, 5, displayed, store, privateHost));
+                for (int width : new int[]{160, 300}) {
+                    boolean wide = width == 300;
+                    int smallLayout = wide ? R.layout.widget_agenda_wide : R.layout.widget_agenda_compact;
+                    layouts.put(new SizeF(width, metrics.height(1, false)),
+                            build(context, id, smallLayout, 1, false, displayed, store, privateHost, metrics));
+                    for (int count = 1; count <= ROWS.length; count++) {
+                        int layout = wide ? R.layout.widget_agenda_wide :
+                                count >= 3 ? R.layout.widget_agenda_tall : R.layout.widget_agenda_compact;
+                        layouts.put(new SizeF(width, metrics.height(count, true)),
+                                build(context, id, layout, count, true, displayed, store, privateHost, metrics));
+                    }
+                }
                 views = new RemoteViews(layouts);
             } else {
                 int width = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 180);
                 int height = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 140);
-                int layout = height >= 250 ? R.layout.widget_agenda_tall : width >= 300 ? R.layout.widget_agenda_wide : R.layout.widget_agenda_compact;
-                views = build(context, id, layout, height >= 250 ? 5 : width >= 300 ? 3 : 2, displayed, store, privateHost);
+                boolean details = height >= metrics.height(1, true);
+                int count = 1;
+                while (count < ROWS.length && height >= metrics.height(count + 1, details)) count++;
+                int layout = width >= 300 ? R.layout.widget_agenda_wide :
+                        count >= 3 ? R.layout.widget_agenda_tall : R.layout.widget_agenda_compact;
+                views = build(context, id, layout, count, details, displayed, store, privateHost, metrics);
             }
             manager.updateAppWidget(id, views);
         }
@@ -107,33 +174,41 @@ public final class AgendaWidgetProvider extends AppWidgetProvider {
         return result;
     }
 
-    private static RemoteViews build(Context context, int widgetId, int layout, int rowCount,
-                                     List<SyncCore.Record> records, CalendarStore store, boolean privateHost) {
+    private static RemoteViews build(Context context, int widgetId, int layout, int rowCount, boolean details,
+                                     List<SyncCore.Record> records, CalendarStore store, boolean privateHost, Metrics metrics) {
         RemoteViews views = new RemoteViews(context.getPackageName(), layout);
+        applyAppearance(views, layout, metrics);
+        views.setViewVisibility(R.id.widget_date, details ? View.VISIBLE : View.GONE);
+        views.setViewVisibility(R.id.widget_status, details ? View.VISIBLE : View.GONE);
         LocalDate today = LocalDate.now();
         views.setTextViewText(R.id.widget_date, today.format(DATE));
         if (layout == R.layout.widget_agenda_wide) {
+            // A one-row card spends its height on the 44dp completion target.
+            views.setViewVisibility(R.id.widget_day_panel, details && rowCount >= 2 ? View.VISIBLE : View.GONE);
             views.setTextViewText(R.id.widget_day_number, String.valueOf(today.getDayOfMonth()));
             views.setTextViewText(R.id.widget_month_label, today.getMonthValue() + "月");
         }
         views.setOnClickPendingIntent(R.id.widget_root, open(context, widgetId, null, false));
         views.setOnClickPendingIntent(R.id.widget_add, open(context, widgetId, null, true));
         views.setOnClickPendingIntent(R.id.widget_refresh, refresh(context, widgetId));
-        for (int i = 0; i < rowCount; i++) {
-            if (i >= records.size()) {
+        for (int i = 0; i < ROWS.length; i++) {
+            if (i >= rowCount || i >= records.size()) {
                 views.setViewVisibility(ROWS[i], View.GONE);
-                views.setTextViewText(ROWS[i], "");
+                views.setTextViewText(LABELS[i], "");
             } else {
                 SyncCore.Record record = records.get(i);
+                String label = rowLabel(record, today);
                 views.setViewVisibility(ROWS[i], View.VISIBLE);
-                views.setTextViewText(ROWS[i], rowLabel(record, today));
-                views.setOnClickPendingIntent(ROWS[i], open(context, widgetId, record, false));
-                views.setContentDescription(ROWS[i], rowLabel(record, today));
+                views.setTextViewText(LABELS[i], label);
+                views.setOnClickPendingIntent(LABELS[i], open(context, widgetId, record, false));
+                views.setContentDescription(LABELS[i], label);
+                views.setOnClickPendingIntent(COMPLETE[i], complete(context, widgetId, record.id));
+                views.setContentDescription(COMPLETE[i], "完成：" + record.data.title);
             }
         }
         boolean empty = records.isEmpty();
         views.setViewVisibility(R.id.widget_empty, empty ? View.VISIBLE : View.GONE);
-        views.setTextViewText(R.id.widget_empty, privateHost ? "解锁并打开朝夕查看日程" : "近日没有待办日程\n点 ＋ 记下一件事");
+        views.setTextViewText(R.id.widget_empty, privateHost ? "解锁并打开朝夕查看日程" : "近日没有待办日程");
         String footer;
         if (privateHost) footer = "锁屏不显示个人日程";
         else if (store.busy()) footer = "正在同步…";
@@ -141,6 +216,65 @@ public final class AgendaWidgetProvider extends AppWidgetProvider {
         else footer = store.connected() ? "本机日程 · 点开查看同步状态" : "本机日程 · 尚未连接同步";
         views.setTextViewText(R.id.widget_status, footer);
         return views;
+    }
+
+    private static void applyAppearance(RemoteViews views, int layout, Metrics metrics) {
+        int text = metrics.dark ? 0xFFEDF3F8 : 0xFF273D4F;
+        int secondary = metrics.dark ? 0xFFAFBDCC : 0xFF647584;
+        int accent = metrics.dark ? 0xFFF0A07F : 0xFFB34F38;
+        views.setInt(R.id.widget_root, "setBackgroundResource", metrics.dark ?
+                R.drawable.widget_background_dark : R.drawable.widget_background);
+        setTextStyle(views, R.id.widget_title, 18, text, metrics);
+        setTextStyle(views, R.id.widget_date, 11, secondary, metrics);
+        setTextStyle(views, R.id.widget_status, 11, secondary, metrics);
+        setTextStyle(views, R.id.widget_empty, 13, secondary, metrics);
+        views.setInt(R.id.widget_header, "setMinimumHeight", metrics.pixels(metrics.header));
+        views.setInt(R.id.widget_date, "setMinimumHeight", metrics.pixels(metrics.meta));
+        views.setInt(R.id.widget_status, "setMinimumHeight", metrics.pixels(metrics.meta));
+        for (int action : new int[]{R.id.widget_refresh, R.id.widget_add}) {
+            views.setTextColor(action, action == R.id.widget_add ? accent : secondary);
+            // These glyphs are icons; their tap area is independent of font size.
+            views.setTextViewTextSize(action, TypedValue.COMPLEX_UNIT_DIP, 22);
+            views.setInt(action, "setBackgroundResource", metrics.dark ?
+                    R.drawable.widget_action_background_dark : R.drawable.widget_action_background);
+        }
+        for (int i = 0; i < ROWS.length; i++) {
+            views.setInt(ROWS[i], "setMinimumHeight", metrics.pixels(metrics.row));
+            setTextStyle(views, LABELS[i], 13, text, metrics);
+            views.setImageViewResource(COMPLETE[i], metrics.dark ?
+                    R.drawable.widget_complete_circle_dark : R.drawable.widget_complete_circle);
+        }
+        if (layout == R.layout.widget_agenda_wide) {
+            setTextStyle(views, R.id.widget_day_number, 30, accent, metrics);
+            setTextStyle(views, R.id.widget_month_label, 11, secondary, metrics);
+        }
+    }
+
+    private static void setTextStyle(RemoteViews views, int id, float baseSp, int color, Metrics metrics) {
+        views.setTextColor(id, color);
+        views.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, baseSp * metrics.fontScale);
+    }
+
+    private static final class Metrics {
+        final boolean dark;
+        final float fontScale;
+        final float density;
+        final int header, meta, row;
+        Metrics(Context context) {
+            dark = DisplayPreferences.isDark(context);
+            float chosen = DisplayPreferences.fontScale(context);
+            fontScale = Float.isFinite(chosen) && chosen > 0 ? chosen : 1;
+            density = context.getResources().getDisplayMetrics().density;
+            header = Math.max(32, textDp(context, 18) + 8);
+            meta = Math.max(18, textDp(context, 11) + 6);
+            row = Math.max(44, textDp(context, 13) + 16);
+        }
+        int textDp(Context context, float sp) {
+            return (int)Math.ceil(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP,
+                    sp * fontScale, context.getResources().getDisplayMetrics()) / density);
+        }
+        int pixels(int dp) { return (int)Math.ceil(dp * density); }
+        int height(int rows, boolean details) { return 20 + header + row * rows + (details ? 2 * meta : 0); }
     }
 
     private static String rowLabel(SyncCore.Record record, LocalDate today) {
@@ -174,5 +308,14 @@ public final class AgendaWidgetProvider extends AppWidgetProvider {
                 .setData(new Uri.Builder().scheme("daynote").authority("widget-refresh")
                         .appendPath(String.valueOf(widgetId)).build());
         return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private static PendingIntent complete(Context context, int widgetId, String taskId) {
+        Intent intent = new Intent(context, AgendaWidgetProvider.class).setAction(ACTION_COMPLETE)
+                .setData(new Uri.Builder().scheme("daynote").authority("widget-complete")
+                        .appendPath(String.valueOf(widgetId)).appendPath(taskId).build())
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId).putExtra("task_id", taskId);
+        return PendingIntent.getBroadcast(context, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 }

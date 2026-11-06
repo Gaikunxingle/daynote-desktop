@@ -2,10 +2,10 @@ package app.youmu.daynote;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
-import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.view.Gravity;
 import android.view.View;
@@ -19,7 +19,7 @@ final class DaynoteUi {
     final int background, surface, ink, muted, line, accent, softAccent;
     DaynoteUi(Context context) {
         this.context = context;
-        dark = (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        dark = DisplayPreferences.isDark(context);
         background = Color.parseColor(dark ? "#171A1B" : "#FAF8F5");
         surface = Color.parseColor(dark ? "#24282A" : "#FFFFFF");
         ink = Color.parseColor(dark ? "#F2F0EA" : "#292724");
@@ -29,6 +29,7 @@ final class DaynoteUi {
         softAccent = Color.parseColor(dark ? "#452D29" : "#FAE9E3");
     }
     int dp(float n) { return Math.round(n * context.getResources().getDisplayMetrics().density); }
+    int sp(float n) { return Math.round(android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,n,context.getResources().getDisplayMetrics())); }
     TextView text(String value, float size, int color, boolean bold) {
         TextView t = new TextView(context);
         t.setText(value); t.setTextSize(size); t.setTextColor(color);
@@ -54,6 +55,17 @@ final class DaynoteUi {
         b.setMinHeight(dp(48)); b.setMinimumHeight(dp(48)); b.setMinWidth(dp(48)); b.setMinimumWidth(dp(48));
         b.setPadding(dp(14), 0, dp(14), 0); b.setBackground(ripple(primary ? accent : surface, 14));
         b.setOnClickListener(v -> action.run());
+        return b;
+    }
+    Button completionButton(boolean completed, int color, Runnable action) {
+        Button b = button(completed ? "✓" : "", false, action);
+        b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 19);
+        b.setTextColor(dark ? Color.BLACK : Color.WHITE); b.setPadding(0,0,0,0);
+        GradientDrawable circle = new GradientDrawable(); circle.setShape(GradientDrawable.OVAL);
+        circle.setColor(completed ? color : Color.TRANSPARENT); circle.setStroke(dp(2),color);
+        b.setBackground(new RippleDrawable(ColorStateList.valueOf(dark ? 0x30FFFFFF : 0x19000000),
+                new InsetDrawable(circle,dp(11)),shape(Color.WHITE,24,false)));
+        if (android.os.Build.VERSION.SDK_INT >= 30) b.setStateDescription(completed ? "已完成" : "未完成");
         return b;
     }
     View space(int height) { View v = new View(context); v.setLayoutParams(new LinearLayout.LayoutParams(1, dp(height))); return v; }
